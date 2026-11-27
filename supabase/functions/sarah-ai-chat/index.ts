@@ -206,13 +206,23 @@ Deno.serve(async (req) => {
     phase: "INITIAL",
     confirmedActions: [],
   };
-  const taskLoad = resumeTask
+  let taskLoad = resumeTask
     ? await caller.rpc("sarah_ai_task_resume", { p_request_id: requestId })
     : await caller.rpc("sarah_ai_task_load_or_create", {
         p_request_id: requestId,
         p_request_hash: taskRequestHash,
         p_initial_state: initialTaskState,
       });
+  // A retry may have lost the response before the first task row was created.
+  // Only a missing-task result falls back to first-time creation; permission,
+  // session, expiry, and request-identity errors remain fail-closed.
+  if (resumeTask && taskLoad.error?.code === "P0002") {
+    taskLoad = await caller.rpc("sarah_ai_task_load_or_create", {
+      p_request_id: requestId,
+      p_request_hash: taskRequestHash,
+      p_initial_state: initialTaskState,
+    });
+  }
   if (taskLoad.error || !taskLoad.data || typeof taskLoad.data !== "object") {
     return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_UNAVAILABLE" });
   }
