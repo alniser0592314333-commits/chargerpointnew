@@ -81,6 +81,13 @@ BEGIN
     RAISE EXCEPTION 'Authenticated admin session required' USING ERRCODE='28000';
   END IF;
   v_session_id:=(auth.jwt()->>'session_id')::uuid;
+  v_payload:=pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
+    'id',v_device_id,'name',p_name,'nameAr',p_name_ar,'nameEn',p_name_en,'icon',p_icon,
+    'basePriceMinor',p_base_price_minor,'chargerFeeEnabled',p_charger_fee_enabled,
+    'chargerFeeApplicable',p_charger_fee_applicable,
+    'isActive',CASE WHEN v_action='RETIRE' THEN false ELSE p_is_active END,
+    'sortOrder',p_sort_order
+  ));
   v_request_payload:=jsonb_build_object(
     'action',v_action,'device_id',v_device_id,'payload',v_payload,
     'expected_version',p_expected_version
@@ -115,13 +122,6 @@ BEGIN
     RAISE EXCEPTION 'AI_TOOL_DAILY_LIMIT_REACHED' USING ERRCODE='P0001';
   END IF;
 
-  v_payload:=pg_catalog.jsonb_strip_nulls(pg_catalog.jsonb_build_object(
-    'id',v_device_id,'name',p_name,'nameAr',p_name_ar,'nameEn',p_name_en,'icon',p_icon,
-    'basePriceMinor',p_base_price_minor,'chargerFeeEnabled',p_charger_fee_enabled,
-    'chargerFeeApplicable',p_charger_fee_applicable,
-    'isActive',CASE WHEN v_action='RETIRE' THEN false ELSE p_is_active END,
-    'sortOrder',p_sort_order
-  ));
   v_result:=public.execute_sync_command(p_request_id,v_command_type,'device_types',v_device_id,v_payload,p_expected_version);
   IF COALESCE((v_result->>'success')::boolean,false) IS NOT TRUE THEN
     RAISE EXCEPTION 'Canonical device command did not confirm success' USING ERRCODE='P0001';
