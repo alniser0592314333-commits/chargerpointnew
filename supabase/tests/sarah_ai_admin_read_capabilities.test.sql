@@ -407,7 +407,7 @@ DECLARE
   v_lookup jsonb;
   v_result jsonb;
 BEGIN
-  v_lookup:=public.sarah_ai_lookup_customers('أحمد خالد');
+  v_lookup:=public.sarah_ai_lookup_customers('محمود سمير');
   IF v_lookup->>'match_count'<>'1' OR v_lookup->'matches'->0->>'customer_code'<>'BBBB' THEN
     RAISE EXCEPTION 'Super Admin customer lookup failed';
   END IF;
