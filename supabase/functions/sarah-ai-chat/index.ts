@@ -121,7 +121,7 @@ Deno.serve(async (req) => {
   const capabilityRegistry = [
     {
       name: "lookup_customers",
-      requiredPermissionGroups: [["customers:view"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"]],
       declaration: {
         name: "lookup_customers",
         description: "Find active ChargerPoint customers by part of their name or exact four-character customer code. Returns at most five names and codes only.",
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "get_customer_profile",
-      requiredPermissionGroups: [["customers:view"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"]],
       declaration: {
         name: "get_customer_profile",
         description: "Read a limited non-financial customer profile after an exact four-character customer code has been found. Use name_hint only to disambiguate multiple customers sharing the code. No phone, balance, debt, notes, orders, or financial history.",
@@ -258,7 +258,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "get_customer_financial_history",
-      requiredPermissionGroups: [["customers:view"], ["customers:financial-view"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"], ["customers:financial-view", "finance:view", "finances:read"]],
       declaration: {
         name: "get_customer_financial_history",
         description: "Read up to twenty recent authoritative financial-ledger entries for a customer after lookup_customers in this same request. Includes event type, amount in ILS minor units, reference IDs, and timestamp; never infer or calculate a balance from these rows.",
@@ -274,7 +274,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "get_customer_orders",
-      requiredPermissionGroups: [["customers:view"], ["orders:view"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:view", "orders:read"]],
       declaration: {
         name: "get_customer_orders",
         description: "Read up to ten recent orders and their item delivery/financial statuses for one customer. First call lookup_customers and use the exact returned four-character code; if it collides, provide a name_hint. No order changes are performed.",
@@ -290,7 +290,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "create_order_with_items",
-      requiredPermissionGroups: [["customers:view"], ["orders:create"], ["orders:edit"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:create"], ["orders:edit", "orders:write"]],
       declaration: {
         name: "create_order_with_items",
         description: "Create one complete customer order and all its items atomically using the app's canonical order commands. First use lookup_customers and pass its exact customer_code; optionally pass name_hint for collisions. Each item needs an exact active catalog device_name and has_charger boolean. manual_price_minor is allowed only for the catalog's Other device type. Uses today's Palestine business day, opening it only if the current account has settings:manage. Refuses duplicate same-customer/day orders, closed days, inactive devices/customers, and debt-limit violations. Does not deliver or charge items.",
@@ -319,7 +319,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "deliver_order_item",
-      requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:deliver"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:view", "orders:read"], ["orders:deliver"]],
       declaration: {
         name: "deliver_order_item",
         description: "Deliver one exact order item returned by get_customer_orders for the customer identified in this same turn. This invokes the canonical delivery/financial recognition path and requires BIN through the separate secure confirmation prompt; never ask for BIN in chat arguments.",
@@ -336,7 +336,7 @@ Deno.serve(async (req) => {
     },
     {
       name: "cancel_order_item",
-      requiredPermissionGroups: [["customers:view"], ["orders:view"], ["orders:cancel"]],
+      requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:view", "orders:read"], ["orders:cancel"]],
       declaration: {
         name: "cancel_order_item",
         description: "Cancel one exact order item returned by get_customer_orders for the customer identified in this same turn. The canonical command applies any required financial reversal and requires BIN through the separate secure confirmation prompt.",
