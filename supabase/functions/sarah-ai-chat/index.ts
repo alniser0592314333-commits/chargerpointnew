@@ -484,6 +484,21 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "list_customers_above_debt_threshold",
+      requiredPermissionGroups: [["customers:view"], ["customers:financial-view", "finance:view", "finances:read"]],
+      declaration: {
+        name: "list_customers_above_debt_threshold",
+        description: "List active customers whose authoritative outstanding balance is greater than a requested threshold. Default threshold is ₪100 and maximum result count is 100. Uses server-calculated balances; returns customer name and balance only.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            min_balance_minor: { type: "INTEGER", description: "Minimum outstanding balance in ILS minor units; defaults to 10000 (₪100)." },
+            limit: { type: "INTEGER", description: "Maximum rows, 1 to 100; defaults to 100." },
+          },
+        },
+      },
+    },
+    {
       name: "get_customer_financial_summary",
       requiredPermissionGroups: [
         ["customers:view"],
@@ -1032,6 +1047,7 @@ Deno.serve(async (req) => {
   const registeredCapabilityNames = new Set<string>(capabilityRegistry.map((capability) => capability.name));
   const readOnlyCapabilityNames = new Set<string>([
     "lookup_customers", "get_customer_profile", "lookup_customer_accounts",
+    "list_customers_above_debt_threshold",
     "get_device_catalog", "get_financial_summary", "list_pending_payments",
     "get_customer_financial_summary", "get_customer_financial_history",
     "get_business_day_orders", "get_customer_orders", "list_customer_history_requests",
@@ -1335,6 +1351,19 @@ Deno.serve(async (req) => {
         ? { p_customer_code: customerCode, p_name_hint: nameHint }
         : { p_customer_code: customerCode, p_name_hint: nameHint, p_limit: 10 };
       const result = await caller.rpc(rpcName, rpcArgs);
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "list_customers_above_debt_threshold") {
+      const threshold = args.min_balance_minor === undefined ? 10000 : args.min_balance_minor;
+      const limit = args.limit === undefined ? 100 : args.limit;
+      if (typeof threshold !== "number" || !Number.isSafeInteger(threshold) || threshold < 0
+        || typeof limit !== "number" || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+        return { response: respond(400, { ok: false, error: "DEBTOR_QUERY_INVALID" }) };
+      }
+      const result = await caller.rpc("sarah_ai_list_customers_above_debt_threshold", {
+        p_min_balance_minor: threshold,
+        p_limit: limit,
+      });
       toolResult = result.data;
       toolError = result.error;
     } else if (toolName === "create_order_with_items") {
