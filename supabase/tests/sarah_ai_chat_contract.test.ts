@@ -16,6 +16,7 @@ const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_o
 const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql");
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
+const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -171,6 +172,15 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("DEVICE_TYPE_AMBIGUOUS");
     expect(adminReadMigration).toContain("DEBT_LIMIT_EXCEEDED");
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text) TO service_role");
+  });
+
+  it("registers device catalog reads under the original devices:view permission", () => {
+    expect(source).toContain('name: "get_device_catalog"');
+    expect(source).toContain('requiredPermissionGroups: [["devices:view"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_get_device_catalog")');
+    expect(deviceCatalogMigration).toContain("public._cp_assert_active_admin_permission('devices:view')");
+    expect(deviceCatalogMigration).toContain("LIMIT 100");
+    expect(deviceCatalogMigration).toContain("jsonb_array_length(v_devices)");
   });
 
   it("registers finance and goals read capabilities against existing permission keys", () => {
