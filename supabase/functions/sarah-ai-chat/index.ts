@@ -2544,16 +2544,6 @@ Deno.serve(async (req) => {
         if (!currentCandidate) return respond(502, { ok: false, error: "AI_EMPTY_RESPONSE" });
       }
 
-      if (!completed) {
-        const finalContent = currentCandidate?.content as Record<string, unknown> | undefined;
-        const finalParts = Array.isArray(finalContent?.parts)
-          ? finalContent.parts as Array<Record<string, unknown>>
-          : [];
-        if (finalParts.some((part) => Boolean(part.functionCall))) {
-          return respond(502, { ok: false, error: "AI_TOOL_CALL_LIMIT_REACHED" });
-        }
-        answer = extractAnswer(currentCandidate);
-      }
     } else {
       answer = extractAnswer(firstCandidate || null);
     }
