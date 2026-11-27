@@ -848,7 +848,7 @@ Deno.serve(async (req) => {
         return { response: respond(400, { ok: false, error: "PAYMENT_INPUT_INVALID" }) };
       }
       const result = await caller.rpc("sarah_ai_record_and_approve_payment", {
-        p_request_id: requestId,
+        p_request_id: actionRequestId,
         p_customer_code: customerCode,
         p_name_hint: nameHint,
         p_amount_minor: amountMinor,
