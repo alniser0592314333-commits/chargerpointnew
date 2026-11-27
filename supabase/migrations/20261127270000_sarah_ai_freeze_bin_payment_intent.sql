@@ -430,6 +430,7 @@ BEGIN
 
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
+    RAISE EXCEPTION 'AI_TOOL_QUOTA_EXCEEDED' USING ERRCODE='P0001';
   END IF;
   v_quota:=public.sarah_ai_consume_my_quota('tool_day');
   IF COALESCE((v_quota->>'allowed')::boolean,false) IS NOT TRUE THEN
