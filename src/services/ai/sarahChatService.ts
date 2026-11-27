@@ -1,7 +1,37 @@
 import { config } from "../../config/env";
 import { getFreshSupabaseAuthToken, getStoredSupabaseAuthSession } from "../supabase/client";
 
-export interface SarahChatResponse { answer: string; modelId: string }
+export interface SarahChatResponse {
+  answer: string;
+  modelId: string;
+  requiresBin?: boolean;
+  binError?: "BIN_INVALID";
+  requiresLocalSync?: boolean;
+  localSyncAction?: "manual_sync";
+}
+
+export interface SarahLocalSyncContext {
+  online: boolean;
+  pendingCount: number;
+  blockedCount: number;
+  failedCount: number;
+  binRequiredCount: number;
+  lastPulledAt: string | null;
+  recentErrorClasses: string[];
+}
+
+export interface SarahLocalSyncActionResult {
+  action: "manual_sync";
+  success: boolean;
+  pushed?: number;
+  pulled?: number;
+  errorCode?: "NETWORK_OFFLINE" | "SYNC_ALREADY_IN_PROGRESS" | "SYNC_FAILED";
+}
+
+export interface SarahChatClientContext {
+  localSyncContext?: SarahLocalSyncContext;
+  localSyncActionResult?: SarahLocalSyncActionResult;
+}
 
 const endpoint = () => {
   if (!config.supabaseUrl || !config.supabaseAnonKey) throw new Error("SUPABASE_NOT_CONFIGURED");
@@ -25,6 +55,9 @@ export const sarahChatService = {
     text: string,
     expectedAuthUserId: string,
     history: { role: "user" | "assistant"; text: string }[] = [],
+    requestId?: string,
+    bin?: string,
+    clientContext?: SarahChatClientContext,
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
@@ -44,6 +77,22 @@ export const sarahChatService = {
       throw new Error("ACCOUNT_CHANGED");
     }
 
+    const stableRequestId = requestId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+      ? requestId
+      : crypto.randomUUID();
+
+    if (bin !== undefined && (!/^\d{4,}$/.test(bin) || bin.length > 32)) throw new Error("BIN_FORMAT_INVALID");
+
+    const requestBody: Record<string, unknown> = {
+      text: clean,
+      history: history.slice(-20),
+      requestId: stableRequestId,
+    };
+    // BIN is sent only as a separate transport field; never added to chat text/history.
+    if (bin) requestBody.bin = bin;
+    if (clientContext?.localSyncContext) requestBody.localSyncContext = clientContext.localSyncContext;
+    if (clientContext?.localSyncActionResult) requestBody.localSyncActionResult = clientContext.localSyncActionResult;
+
     let response: Response;
     try {
       response = await fetch(endpoint(), {
@@ -53,7 +102,9 @@ export const sarahChatService = {
           Authorization: `Bearer ${session.token}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ text: clean, history: history.slice(-20) }),
+        // Stable across retries of the same queued message; used only for server-side
+        // action idempotency and never included in the Gemini prompt/history.
+        body: JSON.stringify(requestBody),
         cache: "no-store",
       });
     } catch {
@@ -65,6 +116,15 @@ export const sarahChatService = {
       data = await response.json();
     } catch {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
+    }
+    if (response.status === 428 && data.error === "LOCAL_SYNC_REQUIRED" && data.action === "manual_sync") {
+      return { answer: "", modelId: "", requiresLocalSync: true, localSyncAction: "manual_sync" };
+    }
+    if (response.status === 428 && data.error === "BIN_REQUIRED") {
+      return { answer: "", modelId: "", requiresBin: true };
+    }
+    if (response.status === 403 && data.error === "BIN_INVALID") {
+      return { answer: "", modelId: "", requiresBin: true, binError: "BIN_INVALID" };
     }
     if (!response.ok || data.ok !== true) {
       throw new Error(typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED");

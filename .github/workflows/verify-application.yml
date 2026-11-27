@@ -1,4 +1,9 @@
 name: Verify application
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches:
@@ -1276,6 +1281,22 @@ jobs:
             END IF;
           END $combined_check$;
           SQL
+      - name: Create isolated database for canonical goal command dispatch
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres canonical_goal_commands_test
+      - name: Prepare canonical goal command fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d canonical_goal_commands_test -v ON_ERROR_STOP=1 -f supabase/tests/canonical_goal_commands_fixture.sql
+      - name: Apply canonical goal create/request command migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d canonical_goal_commands_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261127110000_canonical_goal_create_request_commands.sql
+      - name: Verify canonical goal create/request command security and idempotency
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d canonical_goal_commands_test -v ON_ERROR_STOP=1 -f supabase/tests/canonical_goal_commands.test.sql
 
   verify-username-signin-local-integration:
     name: Verify username sign-in against local Supabase Auth
@@ -1355,6 +1376,82 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_customer_profile.test.sql
+      - name: Prepare Sarah admin read and order capability fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_admin_read_capabilities_fixture.sql
+      - name: Apply Sarah admin read and order capability migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql
+      - name: Apply Sarah session-scoped order lifecycle action migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql
+      - name: Apply Sarah goal management capability migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127130000_sarah_ai_goal_management_capabilities.sql
+      - name: Apply Sarah customer financial history migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql
+      - name: Apply Sarah live permission projection alignment
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql
+      - name: Apply Sarah device catalog read migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql
+      - name: Apply Sarah customer creation migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127170000_sarah_ai_customer_create.sql
+      - name: Apply Sarah customer profile update migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127180000_sarah_ai_customer_profile_update.sql
+      - name: Apply canonical change-log secret redaction migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql
+      - name: Apply historical change-log redaction fixture in disposable test database
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/fixtures/redact_historical_change_log_secrets.sql
+      - name: Apply Sarah protected customer settings migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql
+      - name: Apply Sarah device management capability migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127220000_sarah_ai_device_management.sql
+      - name: Apply Sarah customer financial adjustments migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql
+      - name: Apply Sarah customer account status migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127240000_sarah_ai_customer_account_status.sql
+      - name: Apply Sarah day order renumbering migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127250000_sarah_ai_day_order_renumbering.sql
+      - name: Apply Sarah existing-order item addition migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127260000_sarah_ai_add_item_to_existing_order.sql
+      - name: Verify Sarah session-bound reads and atomic order creation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_admin_read_capabilities.test.sql
+      - name: Verify Sarah adds catalog items to existing orders with live permission checks
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_add_item_to_existing_order.test.sql
       - name: Verify atomic quota enforcement under concurrent requests
         env:
           PGPASSWORD: postgres
