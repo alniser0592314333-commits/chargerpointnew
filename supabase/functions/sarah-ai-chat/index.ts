@@ -1078,6 +1078,7 @@ Deno.serve(async (req) => {
     update_jawwal_pay_recipient: ["get_jawwal_pay_recipient"],
     update_sarah_ai_provider_settings: ["get_sarah_ai_provider_settings"],
     clear_sarah_ai_provider_settings: ["get_sarah_ai_provider_settings"],
+    request_manual_sync: [],
   };
   const binProtectedCapabilityNames = new Set<string>([
     "record_and_approve_customer_payment","approve_payment_submission","adjust_customer_finances",
