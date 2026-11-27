@@ -28,18 +28,18 @@ The following twenty-five bounded capabilities are registered today:
 |---|---|---|
 | lookup_customers | customers:view | Up to five active customer names and display codes |
 | get_customer_profile | customers:view | Up to five bounded non-financial profile matches after a same-session lookup proof |
-| get_customer_financial_summary | (customers:view OR customers:read) AND (customers:financial-view OR finance:view OR finances:read) | One authoritative customer balance in ILS minor units |
+| get_customer_financial_summary | customers:view AND customers:financial-view | One authoritative customer balance in ILS minor units |
 | get_customer_financial_history | (customers:view OR customers:read) AND (customers:financial-view OR finance:view OR finances:read) | Up to twenty recent authoritative ledger entries with bounded references |
 | get_customer_orders | customers:view AND orders:view | Up to ten recent orders and bounded item status/charge details |
-| create_order_with_items | (customers:view OR customers:read) AND orders:create AND (orders:edit OR orders:write) | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
+| create_order_with_items | customers:view AND orders:create AND orders:edit | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
 | get_device_catalog | devices:view | Up to one hundred non-retired device types, bilingual names, base prices, and charger policy |
 | get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
 | list_pending_payments | finance:approve-payment OR finance:create-payment | Up to twenty pending manual, customer QR, and Jawwal Pay submissions |
 | record_and_approve_customer_payment | customers:view AND finance:create-payment AND finance:approve-payment | One manual CASH payment through the existing pending-submission + approval workflow; requires secure BIN |
 | approve_payment_submission | finance:approve-payment AND finance:create-payment | Approves one existing pending submission using its ID and amount; requires secure BIN |
 | reject_payment_submission | finance:approve-payment | Rejects one existing pending submission with a reason; no BIN |
-| deliver_order_item | (customers:view OR customers:read) AND (orders:view OR orders:read) AND orders:deliver | Delivers one exact item through canonical financial recognition; secure BIN required |
-| cancel_order_item | (customers:view OR customers:read) AND (orders:view OR orders:read) AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
+| deliver_order_item | customers:view AND orders:view AND orders:deliver | Delivers one exact item through canonical financial recognition; secure BIN required |
+| cancel_order_item | customers:view AND orders:view AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
 | cancel_order | (customers:view OR customers:read) AND (orders:view OR orders:read) AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
 | get_goals_overview | goals:view OR goals:manage OR goals:requests:view OR goals:approve | Up to fifteen matching goal/request summaries plus a bounded customer directory |
 | list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Up to twenty pending customer requests for temporary full-history access |
