@@ -2,6 +2,8 @@
 -- Run after the provider, quota, lookup, profile, and admin-read migrations plus fixture.
 
 -- Device catalog read requires devices:view and returns only a bounded projection.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
@@ -19,6 +21,8 @@ $device_catalog_read$;
 RESET ROLE;
 
 -- An ordinary admin without devices:view cannot use Sarah to read the catalog.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
@@ -50,6 +54,8 @@ WHERE actor_auth_user_id IN (
 );
 
 -- Customer creation is idempotent and uses the original customers:create permission.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
@@ -90,6 +96,8 @@ $customer_create$;
 RESET ROLE;
 
 -- Basic customer edits require customers:view + customers:edit and a same-session lookup proof.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
@@ -131,6 +139,8 @@ $customer_profile_update$;
 RESET ROLE;
 
 -- Protected customer settings require their granular permission and separate BIN.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
@@ -202,6 +212,8 @@ $customer_protected_settings$;
 RESET ROLE;
 
 -- An admin with customers:edit but without granular debt-limit permission is denied.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -224,6 +236,8 @@ $customer_protected_permission_gate$;
 RESET ROLE;
 
 -- Account status lookup includes inactive customers; activation/deactivation uses exact proof and both original permissions.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
@@ -265,6 +279,8 @@ $customer_account_status$;
 RESET ROLE;
 
 -- Admin with customers:view/edit but without customers:deactivate cannot even look up inactive accounts.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -281,6 +297,8 @@ $customer_account_status_permission_gate$;
 RESET ROLE;
 
 -- An ordinary admin without customers:create cannot create a customer through Sarah.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
@@ -308,6 +326,8 @@ UPDATE public.customers SET debt_limit_minor=-1000
 WHERE id='aaaa0000-0000-4000-8000-000000000003';
 
 -- Manager has ai:use + customer/order permissions, but no settings:manage.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -335,6 +355,8 @@ RESET ROLE;
 
 -- Super Admin opens today's Palestine business day through the server-owned
 -- business-day path and creates an order through the canonical command boundary.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000001';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
@@ -376,6 +398,8 @@ RESET ROLE;
 
 -- The original manager retries the exact same queued request ID and payload.
 -- It succeeds now that a day exists; a second replay returns the saved result.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -497,6 +521,8 @@ VALUES(
   3000,'PENDING','JAWALPAY','CUSTOMER_JAWAL_PAY','pending test submission'
 );
 
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -583,6 +609,8 @@ VALUES
  ('60000000-0000-4000-8000-000000000003','aaaa0000-0000-4000-8000-000000000003',12,'PENDING'),
  ('60000000-0000-4000-8000-000000000005','aaaa0000-0000-4000-8000-000000000004',10,'PENDING');
 
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000008';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000008',false);
@@ -677,6 +705,8 @@ $goal_capability_actions$;
 RESET ROLE;
 
 -- Ordinary admin without goals:manage cannot use Sarah to create a goal.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000007';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000007',false);
@@ -696,6 +726,8 @@ $goal_permission_gate$;
 RESET ROLE;
 
 -- A live financial/order permission does not replace customers:view.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000008';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000008',false);
@@ -734,6 +766,8 @@ INSERT INTO auth.sessions(id,user_id,created_at,not_after,user_agent)
 VALUES('20000000-0000-4000-8000-000000000010','10000000-0000-4000-8000-000000000002',now(),NULL,'second session');
 INSERT INTO public.account_sessions(session_id,user_id,revoked_at,session_expires_at)
 VALUES('20000000-0000-4000-8000-000000000010','10000000-0000-4000-8000-000000000002',NULL,now()+interval '7 days');
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -758,6 +792,8 @@ $session_proof_isolation$;
 RESET ROLE;
 
 -- Ordinary admin cannot create orders without every original permission.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000007';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000007',false);
@@ -781,6 +817,8 @@ RESET ROLE;
 
 -- Debt-limit enforcement remains server-side and the original override permission
 -- is honored only after it is granted.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -803,6 +841,8 @@ $debt_limit$;
 RESET ROLE;
 INSERT INTO public.admin_custom_permissions(admin_id,permission,is_grant)
 VALUES('00000000-0000-4000-8000-000000000002','orders:override-debt-limit',true);
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000002';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
@@ -824,6 +864,8 @@ $debt_override$;
 RESET ROLE;
 
 -- Failure in a later item must roll back the order and every earlier item.
+-- Isolate this scenario from earlier test actors' hourly tool quota.
+DELETE FROM public.sarah_ai_usage_windows WHERE actor_auth_user_id='10000000-0000-4000-8000-000000000009';
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
 SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
