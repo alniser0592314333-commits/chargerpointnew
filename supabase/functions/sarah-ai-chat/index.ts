@@ -1016,10 +1016,10 @@ Deno.serve(async (req) => {
         (group) => group.some((permission) => permissions.includes(permission)),
       )),
   );
-  const enabledCapabilityNames = new Set(enabledCapabilities.map((capability) => capability.name));
-  const registeredCapabilityNames = new Set(capabilityRegistry.map((capability) => capability.name));
-  const safeParallelReadPair = new Set(["lookup_customers", "get_device_catalog"]);
-  const binProtectedCapabilityNames = new Set([
+  const enabledCapabilityNames = new Set<string>(enabledCapabilities.map((capability) => capability.name));
+  const registeredCapabilityNames = new Set<string>(capabilityRegistry.map((capability) => capability.name));
+  const safeParallelReadPair = new Set<string>(["lookup_customers", "get_device_catalog"]);
+  const binProtectedCapabilityNames = new Set<string>([
     "record_and_approve_customer_payment","approve_payment_submission","adjust_customer_finances",
     "update_customer_protected_settings","deliver_order_item","cancel_order_item","cancel_order",
     "set_customer_active_status","set_admin_permission","suspend_admin","activate_admin",
