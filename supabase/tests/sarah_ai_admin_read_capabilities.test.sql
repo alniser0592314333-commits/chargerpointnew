@@ -270,6 +270,16 @@ UPDATE public.order_items
 SET status='delivered',operational_status='DELIVERED',financial_status='RECOGNIZED',delivered_at=now()
 WHERE id=(SELECT id FROM public.order_items ORDER BY item_sequence,id LIMIT 1);
 
+INSERT INTO public.goal_requests(id,customer_id,requested_target,status)
+VALUES
+ ('60000000-0000-4000-8000-000000000003','aaaa0000-0000-4000-8000-000000000003',12,'PENDING'),
+ ('60000000-0000-4000-8000-000000000005','aaaa0000-0000-4000-8000-000000000004',10,'PENDING');
+
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000002',false);
+
 DO $goal_capability_reads$
 DECLARE
   v_proposal jsonb;
@@ -308,11 +318,6 @@ BEGIN
     RAISE EXCEPTION 'Generated goal was not persisted as ACTIVE';
   END IF;
 
-  INSERT INTO public.goal_requests(id,customer_id,requested_target,status)
-  VALUES(
-    '60000000-0000-4000-8000-000000000003',
-    'aaaa0000-0000-4000-8000-000000000003',12,'PENDING'
-  );
   v_result:=public.sarah_ai_execute_goal_action(
     '60000000-0000-4000-8000-000000000004','APPROVE_GOAL_REQUEST',
     NULL,'60000000-0000-4000-8000-000000000003',NULL,NULL,NULL,NULL,NULL,NULL
@@ -325,11 +330,6 @@ BEGIN
   SELECT resulting_goal_id INTO v_approved_goal_id FROM public.goal_requests
   WHERE id='60000000-0000-4000-8000-000000000003';
 
-  INSERT INTO public.goal_requests(id,customer_id,requested_target,status)
-  VALUES(
-    '60000000-0000-4000-8000-000000000005',
-    'aaaa0000-0000-4000-8000-000000000004',10,'PENDING'
-  );
   v_result:=public.sarah_ai_execute_goal_action(
     '60000000-0000-4000-8000-000000000006','REJECT_GOAL_REQUEST',
     NULL,'60000000-0000-4000-8000-000000000005',NULL,NULL,NULL,NULL,'not suitable',NULL
@@ -366,6 +366,7 @@ BEGIN
   END IF;
 END;
 $goal_capability_actions$;
+RESET ROLE;
 
 -- Ordinary admin without goals:manage cannot use Sarah to create a goal.
 SET ROLE authenticated;
