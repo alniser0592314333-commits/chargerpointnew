@@ -1,4 +1,5 @@
 -- Verify Sarah task state is reachable only through the trusted service-role gateway.
+BEGIN;
 -- Run after sarah_ai_durable_task_checkpoints.test.sql and its provider fixture.
 
 DO $task_gateway_acl$
@@ -135,3 +136,5 @@ END;
 $task_gateway_lifecycle$;
 
 RESET ROLE;
+
+ROLLBACK;
