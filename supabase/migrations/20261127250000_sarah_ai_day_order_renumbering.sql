@@ -102,7 +102,7 @@ BEGIN
      OR cardinality(p_order_ids)<1 OR cardinality(p_order_ids)>200 THEN
     RAISE EXCEPTION 'Renumber request must include a date and 1 to 200 ordered order IDs' USING ERRCODE='22023';
   END IF;
-  IF (SELECT count(DISTINCT x) FROM unnest(p_order_ids) x)<>cardinality(p_order_ids) THEN
+  IF (SELECT count(DISTINCT supplied.order_id) FROM unnest(p_order_ids) AS supplied(order_id))<>cardinality(p_order_ids) THEN
     RAISE EXCEPTION 'Renumber order IDs must be unique' USING ERRCODE='22023';
   END IF;
   IF auth.uid() IS NULL OR COALESCE(auth.jwt()->>'session_id','')='' THEN
