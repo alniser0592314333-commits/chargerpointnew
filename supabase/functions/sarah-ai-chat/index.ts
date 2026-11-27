@@ -246,44 +246,6 @@ Deno.serve(async (req) => {
   let taskState = loadedTask.state && typeof loadedTask.state === "object" && !Array.isArray(loadedTask.state)
     ? loadedTask.state as Record<string, unknown>
     : initialTaskState;
-  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
-    return respond(200, {
-      ok: true,
-      answer: taskState.answer,
-      modelId: typeof taskState.modelId === "string" ? taskState.modelId : "",
-    });
-  }
-  if (taskStatus === "FAILED" && resumeTask) {
-    // An explicit user retry reopens only a previously checkpointed task.
-    // Completed tool results and deterministic action IDs remain unchanged.
-    const retryState = {
-      ...taskState,
-      phase: "PROVIDER_RETRY",
-      providerRetryCount: 0,
-      failureCode: null,
-      failedAt: null,
-    };
-    const reopened = await admin.rpc("sarah_ai_task_gateway_checkpoint", {
-      p_actor_id: taskActor,
-      p_session_id: taskSession,
-      p_request_id: requestId,
-      p_expected_version: taskVersion,
-      p_status: "RUNNING",
-      p_state: retryState,
-    });
-    if (reopened.error || !reopened.data || typeof reopened.data !== "object") {
-      return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_UNAVAILABLE" });
-    }
-    const reopenedRow = reopened.data as Record<string, unknown>;
-    taskVersion = Number(reopenedRow.version);
-    taskStatus = "RUNNING";
-    taskState = retryState;
-  } else if (taskStatus === "FAILED") {
-    return respond(504, {
-      ok: false,
-      error: safeText(taskState.failureCode, 80) || "AI_TASK_FAILED",
-    });
-  }
   if (!Number.isSafeInteger(taskVersion) || taskVersion < 1) {
     return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_INVALID" });
   }
@@ -1179,6 +1141,36 @@ Deno.serve(async (req) => {
     )) {
       return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
     }
+  }
+  if (taskStatus === "FAILED" && resumeTask) {
+    // Reopen only after the saved capabilities have passed live permission checks.
+    const retryState = {
+      ...taskState,
+      phase: "PROVIDER_RETRY",
+      providerRetryCount: 0,
+      failureCode: null,
+      failedAt: null,
+    };
+    const reopened = await admin.rpc("sarah_ai_task_gateway_checkpoint", {
+      p_actor_id: taskActor,
+      p_session_id: taskSession,
+      p_request_id: requestId,
+      p_expected_version: taskVersion,
+      p_status: "RUNNING",
+      p_state: retryState,
+    });
+    if (reopened.error || !reopened.data || typeof reopened.data !== "object") {
+      return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_UNAVAILABLE" });
+    }
+    const reopenedRow = reopened.data as Record<string, unknown>;
+    taskVersion = Number(reopenedRow.version);
+    taskStatus = "RUNNING";
+    taskState = retryState;
+  } else if (taskStatus === "FAILED") {
+    return respond(504, {
+      ok: false,
+      error: safeText(taskState.failureCode, 80) || "AI_TASK_FAILED",
+    });
   }
   if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
     return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
