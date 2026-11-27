@@ -7,6 +7,8 @@ describe("Admin Granular Custom Permissions UI & Transfer Logic", () => {
     { key: "customers:view", labelAr: "عرض العملاء", labelEn: "View Customers" },
     { key: "finance:create-payment", labelAr: "إنشاء عمليات دفع", labelEn: "Create Payments" },
     { key: "settings:manage", labelAr: "إدارة إعدادات النظام", labelEn: "Manage Global Settings" },
+    { key: "ai:use", labelAr: "استخدام مساعد سارة الذكي", labelEn: "Use Sarah AI Assistant" },
+    { key: "ai:manage", labelAr: "إدارة مزود سارة الذكي", labelEn: "Manage Sarah AI Provider" },
     { key: "admin:manage", labelAr: "إدارة المشرفين الفرعيين", labelEn: "Manage Subordinate Admins" },
   ];
 
@@ -24,6 +26,8 @@ describe("Admin Granular Custom Permissions UI & Transfer Logic", () => {
       "orders:create",
       "finance:create-payment",
       "settings:manage",
+      "ai:use",
+      "ai:manage",
       "admin:manage",
     ]);
   });
@@ -84,7 +88,14 @@ describe("Admin Granular Custom Permissions UI & Transfer Logic", () => {
     expect(activeList.length).toBe(0);
   });
 
-  it("6. Super Admin BIN validation requires non-empty >= 4 digits", () => {
+  it("6. Sarah use and management permissions are independently assignable", () => {
+    expect(SYSTEM_PERMISSIONS.some((permission) => permission.key === "ai:use")).toBe(true);
+    expect(SYSTEM_PERMISSIONS.some((permission) => permission.key === "ai:manage")).toBe(true);
+    expect(SYSTEM_PERMISSIONS.find((permission) => permission.key === "ai:use")?.labelAr)
+      .toBe("استخدام مساعد سارة الذكي");
+  });
+
+  it("7. Super Admin BIN validation requires non-empty >= 4 digits", () => {
     const validateBin = (bin: string) => {
       const clean = bin.trim();
       return clean.length >= 4;

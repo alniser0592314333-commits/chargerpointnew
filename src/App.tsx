@@ -21,6 +21,7 @@ import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import { globalSyncBridge } from './infrastructure/sync/syncBridge';
 import { syncEventEmitter } from './infrastructure/sync/syncEngine';
 import { HomePage } from './components/pages/HomePage';
+import { SarahChatPage } from './components/pages/SarahChatPage';
 import { DaysOrdersPage } from './components/pages/DaysOrdersPage';
 import { DayDetailPage } from './components/pages/DayDetailPage';
 import { AddOrderPage } from './components/pages/AddOrderPage';
@@ -782,6 +783,11 @@ export default function App() {
     }
 
     switch (pathname) {
+      case '/app/sarah': {
+        const allowed = Boolean(userSession && (userSession.role === 'SUPER_ADMIN' || userSession.permissions.includes('ai:use')));
+        if (!allowed) return <UnauthorizedPage />;
+        return <SarahChatPage session={userSession} />;
+      }
       case '/app':
         return (
           <HomePage

@@ -94,7 +94,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
     const tokens = Number(maxOutputTokens);
     const timeout = Number(timeoutMs);
     if (!Number.isFinite(t) || t < 0 || t > 2 ||
-      !Number.isInteger(tokens) || tokens < 1 || tokens > 65536 ||
+      !Number.isInteger(tokens) || tokens < 1 || tokens > 4096 ||
       !Number.isInteger(timeout) || timeout < 5000 || timeout > 120000) return null;
     return { temperature: t, maxOutputTokens: tokens, timeoutMs: timeout };
   };
@@ -224,7 +224,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
       const nextTokens = Number(importedConfig.maxOutputTokens ?? 2048);
       const nextTimeout = Number(importedConfig.timeoutMs ?? 30000);
       if (!Number.isFinite(nextTemperature) || nextTemperature < 0 || nextTemperature > 2 ||
-        !Number.isInteger(nextTokens) || nextTokens < 1 || nextTokens > 65536 ||
+        !Number.isInteger(nextTokens) || nextTokens < 1 || nextTokens > 4096 ||
         !Number.isInteger(nextTimeout) || nextTimeout < 5000 || nextTimeout > 120000) {
         throw new Error("INVALID_INTEGRATION_PACKAGE");
       }
@@ -353,7 +353,7 @@ export const AISettingsSection: React.FC<{ locale: "ar" | "en" }> = ({ locale })
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 dark:text-[#8eb698] mb-1">Max Output Tokens</label>
-                  <input type="number" min="1" max="65536" step="1" value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-200 dark:border-[#17443c] bg-white dark:bg-[#071f1b] px-3 py-2 text-sm text-gray-900 dark:text-[#daf1de]" />
+                  <input type="number" min="1" max="4096" step="1" value={maxOutputTokens} onChange={(e) => setMaxOutputTokens(e.target.value)} dir="ltr" className="w-full rounded-lg border border-gray-200 dark:border-[#17443c] bg-white dark:bg-[#071f1b] px-3 py-2 text-sm text-gray-900 dark:text-[#daf1de]" />
                 </div>
                 <div>
                   <label className="block text-xs text-gray-600 dark:text-[#8eb698] mb-1">Timeout (ms)</label>

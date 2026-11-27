@@ -23,6 +23,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
 
   const navItems: Array<{ id: string; label: string; badge?: number }> = [
     { id: '/app', label: t('navHome') },
+    ...(isSuperAdmin || Boolean(userSession?.permissions?.includes('ai:use')) ? [{ id: '/app/sarah', label: locale === 'ar' ? 'سارة — المساعد الذكي' : 'Sarah AI Assistant' }] : []),
     { id: '/app/days', label: t('navDaysOrders') },
     { id: '/app/customers', label: t('navCustomers') },
     { id: '/app/purchases', label: locale === 'ar' ? 'دفتر المشتريات' : 'Purchase Book' },
@@ -52,6 +53,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ isOpen, onClose, currentPa
             const isActive =
               currentPath === item.id ||
               (item.id === '/app/days' && currentPath.startsWith('/app/days/')) ||
+            (item.id === '/app/sarah' && currentPath.startsWith('/app/sarah')) ||
               (item.id === '/app/purchases' && currentPath.startsWith('/app/purchases'));
             return (
               <button

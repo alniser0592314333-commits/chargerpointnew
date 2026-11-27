@@ -110,6 +110,8 @@ export const AdminManagementPage: React.FC = () => {
     { key: "devices:pricing", labelEn: "Adjust Base Pricing", labelAr: "تعديل أسعار الأجهزة" },
     { key: "devices:charger-policy", labelEn: "Manage Charger Policy", labelAr: "إدارة سياسات الشحن" },
     { key: "settings:manage", labelEn: "Manage Global Settings", labelAr: "إدارة إعدادات النظام" },
+    { key: "ai:use", labelEn: "Use Sarah AI Assistant", labelAr: "استخدام مساعد سارة الذكي" },
+    { key: "ai:manage", labelEn: "Manage Sarah AI Provider", labelAr: "إدارة مزود سارة الذكي" },
     { key: "admin:manage", labelEn: "Manage Subordinate Admins", labelAr: "إدارة المشرفين الفرعيين" },
     { key: "sync:manage", labelEn: "Access & Manage Sync Center", labelAr: "عرض وإدارة مركز المزامنة" },
     { key: "goals:view", labelEn: "View Goals & Progress", labelAr: "عرض الأهداف والتقدم" },

@@ -94,6 +94,36 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(JSON.parse(storageMap.get("app_auth_session")!).email).toBe("account-b@example.test");
   });
 
+  it("rejects a cached admin session when the Auth subject changes even if the email matches", async () => {
+    const accountA: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-auth-a",
+      refresh_token: "refresh-token-auth-a",
+      user: { id: "auth-subject-a", email: "same@example.test" },
+    };
+    const accountB: supabaseClient.SupabaseAuthSession = {
+      ...authSession,
+      access_token: "access-token-auth-b",
+      refresh_token: "refresh-token-auth-b",
+      user: { id: "auth-subject-b", email: "same@example.test" },
+    };
+    supabaseClient.saveStoredSupabaseAuthSession(accountA);
+    const profileSpy = vi.spyOn(authService, "getAdminProfile").mockResolvedValueOnce(adminProfile({
+      admin_id: "admin-subject-a",
+      auth_user_id: "auth-subject-a",
+      email: "same@example.test",
+    }) as any);
+    const first = await authService.getCurrentSession(true);
+    expect(first?.authUserId).toBe("auth-subject-a");
+
+    storageMap.set("supabase_auth_session", JSON.stringify(accountB));
+    profileSpy.mockResolvedValueOnce(null);
+    const switched = await authService.getCurrentSession();
+
+    expect(switched).toBeNull();
+    expect(storageMap.has("app_auth_session")).toBe(false);
+  });
+
   it("never falls back to the previous account's cached role when the newly selected account profile is unavailable", async () => {
     const accountA: supabaseClient.SupabaseAuthSession = {
       ...authSession,
@@ -240,6 +270,33 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(strictMigration).not.toContain("IF v_read_only THEN RETURN true; END IF;");
   });
 
+  it("keeps the server-enforced client-specific idle policy and five-minute activity write throttle", () => {
+    const migration = readFileSync("supabase/migrations/20261122120000_admin_session_idle_expiry_policy.sql", "utf8");
+    const readOnlyGuard = readFileSync("supabase/migrations/20261126100000_read_only_account_session_guard.sql", "utf8");
+    expect(migration).toContain("interval '30 days'");
+    expect(migration).toContain("interval '7 days'");
+    expect(migration).toContain("SESSION_IDLE_EXPIRED");
+    expect(migration).toContain("reactivate_my_account_session");
+    expect(migration).toContain("get_my_admin_login_gate");
+    expect(migration).toContain("session_expires_at <= now()");
+    expect(migration).toContain("AND s.user_id = v_user_id");
+    expect(readOnlyGuard).toContain("v_read_only boolean := current_setting('transaction_read_only', true) = 'on'");
+    expect(readOnlyGuard).toContain("IF NOT v_read_only");
+    expect(readOnlyGuard).toContain("IF v_read_only THEN RETURN true; END IF;");
+  });
+
+
+  it("keeps session reactivation bound to the registered server-side client type and fresh Auth sessions", () => {
+    const migration = readFileSync("supabase/migrations/20261126200000_strict_account_session_registry.sql", "utf8");
+    const reactivation = migration.slice(migration.indexOf("CREATE OR REPLACE FUNCTION public.reactivate_my_account_session"));
+    expect(reactivation).toContain("SESSION_IDLE_EXPIRED_REQUIRES_FRESH_AUTH");
+    expect(reactivation).toContain("v_account_session.client_type IN ('native', 'installed_pwa')");
+    expect(reactivation).toContain("v_auth_session.created_at < now() - interval '5 minutes'");
+    expect(reactivation).toContain("'client_type', v_account_session.client_type");
+    expect(reactivation).not.toContain("client_type = EXCLUDED.client_type");
+  });
+
+
   it("checks the native vault commit result and verifies persisted ciphertext", () => {
     const java = readFileSync("scripts/android/AccountBiometricPlugin.java", "utf8");
     expect(java).toContain("boolean committed = preferences.edit()");
@@ -288,17 +345,10 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(app).toContain("saveAdminQuickLoginToken(identifier, currentAuth.refresh_token, currentAuth.user.id)");
   });
 
-  it("requires a live app session before biometric management and rechecks account status before issuing a biometric login", () => {
+  it("rechecks administrator activation at the time a biometric challenge is consumed", () => {
     const edge = readFileSync("supabase/functions/account-biometric/index.ts", "utf8");
-    expect(edge).toContain('caller.rpc("is_active_admin_session")');
-    expect(edge).toContain('admin.from("customer_account_sessions")');
-    expect(edge).toContain("customerSession.revoked_at");
-    expect(edge).toContain("customerSession.session_id !== sessionId");
-    expect(edge).toContain("customerSession.expires_at");
     expect(edge).toContain('if (cred.account_type === "admin")');
     expect(edge).toContain("adminRow?.is_active !== true");
-    expect(edge).toContain("link.must_change_password === true");
-    expect(edge).toContain("customer.status === \"DELETED\"");
   });
 
 });

@@ -191,6 +191,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
         is_admin: true,
         is_active: true,
         admin_id: "admin_01",
+        auth_user_id: "user_owner_01",
         role: "SUPER_ADMIN",
         permissions: ["orders:view", "finance:view"],
       });
@@ -219,6 +220,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
       // Pre-seed legitimate verified session
       const validStoredSession: UserSession = {
         userId: "admin_01",
+        authUserId: "user_owner_01",
         email: "owner@system.local",
         fullName: "Owner",
         role: "SUPER_ADMIN",
@@ -240,6 +242,7 @@ describe("Final Authentication Verification - Security & BIN Gate Audit", () => 
         is_admin: true,
         is_active: true,
         admin_id: "admin_01",
+        auth_user_id: "user_owner_01",
         role: "SUPER_ADMIN",
         permissions: ["orders:view", "finance:view"],
       });
