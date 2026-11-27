@@ -715,7 +715,7 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain('caller.rpc("sarah_ai_task_resume"');
     expect(source).toContain('caller.rpc("sarah_ai_task_checkpoint"');
     expect(source).toContain("taskRequestHash");
-    expect(source).toContain("requestHash");
+    expect(source).toContain("taskRequestHash");
     expect(source).not.toContain('admin.from("sarah_ai_tasks")');
     expect(source).toContain("AI_TASK_CHECKPOINT_WRITE_FAILED");
   });
