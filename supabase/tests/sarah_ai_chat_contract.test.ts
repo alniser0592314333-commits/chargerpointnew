@@ -113,6 +113,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("const enabledCapabilities = capabilityRegistry.filter(");
     expect(source).toContain("isSuperAdmin || permissions.includes(capability.requiredPermission)");
     expect(source).toContain("enabledCapabilities.map((capability) => capability.declaration)");
+    expect(source).toContain("const hasEnabledCapabilities = enabledCapabilities.length > 0");
+    expect(source).not.toContain("canLookupCustomers");
     expect(source).toContain("enabledCapabilityNames.has(toolName");
     expect(source).toContain("PostgreSQL independently re-checks each permission per call");
     expect(source).not.toContain("You have two read-only tools");
