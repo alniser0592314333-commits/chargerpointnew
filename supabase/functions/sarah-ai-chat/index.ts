@@ -2483,7 +2483,10 @@ Deno.serve(async (req) => {
         for (let index = 0; index < requestedCalls.length; index++) {
           if (resultsByIndex.has(index)) continue;
           const call = requestedCalls[index];
-          const missing = missingPrerequisites[index];
+          const missing = readOnlyCapabilityNames.has(call.name)
+            ? requiredForRead(call).filter((name) => !verifiedPrerequisiteNames.has(name))
+            : (requiredForMutation(call) || ["CAPABILITY_PREREQUISITE_REGISTRY_MISSING"])
+                .filter((name) => !verifiedPrerequisiteNames.has(name));
           if (readOnlyCapabilityNames.has(call.name)) {
             resultsByIndex.set(index, {
               ok: false,
