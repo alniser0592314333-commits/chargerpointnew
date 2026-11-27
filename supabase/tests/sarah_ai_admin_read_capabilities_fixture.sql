@@ -18,6 +18,19 @@ BEGIN
 END;
 $function$;
 
+CREATE TABLE IF NOT EXISTS public.sarah_ai_action_idempotency (
+  auth_user_id uuid NOT NULL,
+  auth_session_id uuid NOT NULL,
+  request_id uuid NOT NULL,
+  action_name text NOT NULL,
+  request_payload jsonb NOT NULL,
+  result jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (auth_user_id,request_id)
+);
+ALTER TABLE public.sarah_ai_action_idempotency ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.sarah_ai_action_idempotency FROM PUBLIC,anon,authenticated,service_role;
+
 CREATE TABLE public.business_days (
   id uuid PRIMARY KEY,
   business_date date NOT NULL UNIQUE,
