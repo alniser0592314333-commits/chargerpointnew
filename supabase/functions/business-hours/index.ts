@@ -164,7 +164,7 @@ Deno.serve(async (req: Request) => {
   if (generationError) return response({ error: "SETTINGS_READ_FAILED" }, 500);
 
   const resetGeneration = Number.isSafeInteger(generationRow?.value_number)
-    ? Number(generationRow.value_number)
+    ? Number(generationRow?.value_number)
     : 1;
   const config: HoursConfig = {
     ...defaults(),
