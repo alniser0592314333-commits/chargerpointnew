@@ -9,6 +9,13 @@ import { SarahAccountOperationScope } from "../../application/ai/sarahAccountOpe
 import { buildSarahHistorySnapshot } from "../../application/ai/sarahHistory";
 
 type Message = { role: "user" | "assistant"; text: string };
+type PendingBinAction = {
+  id: string;
+  correlationId: string;
+  text: string;
+  historySnapshot: { role: "user" | "assistant"; text: string }[];
+  baseMessages: Message[];
+};
 const accountScopeIdentity = (accountId?: string | null, authUserId?: string) =>
   accountId ? `${accountId}:${authUserId || "unverified"}` : null;
 
@@ -18,6 +25,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<SarahInputRecord[]>([]);
+  const [pendingBinAction, setPendingBinAction] = useState<PendingBinAction | null>(null);
+  const [binValue, setBinValue] = useState("");
+  const [binError, setBinError] = useState("");
   const [hydratedAccount, setHydratedAccount] = useState<string | null>(null);
   const activeAccountId = session?.authUserId || null;
   const accountScopeRef = useRef(new SarahAccountOperationScope(accountScopeIdentity(session?.userId, session?.authUserId)));
@@ -31,6 +41,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     setBusy(false);
     setError("");
     setPending([]);
+    setPendingBinAction(null);
+    setBinValue("");
+    setBinError("");
     setHydratedAccount(null);
   }, [session?.userId, session?.authUserId]);
 
@@ -135,6 +148,16 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       try {
         const response = await sarahChatService.send(clean, session?.authUserId || '', historySnapshot, correlationId);
         if (!isCurrent(accountId, operation)) return;
+        if (response.requiresBin) {
+          await sarahInputQueue.transition(accountId, id, "WAITING_FOR_CONFIRMATION", {
+            lastErrorCode: response.binError || "BIN_REQUIRED",
+          });
+          setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages });
+          setBinValue("");
+          setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "");
+          await refreshQueue(accountId, operation);
+          return;
+        }
         await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
         const completedMessages = [...baseMessages, { role: "user" as const, text: clean }, { role: "assistant" as const, text: response.answer }];
         await sarahConversationStore.save(accountId, completedMessages, conversationGenerationRef.current);
@@ -181,7 +204,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     const operation = accountScopeRef.current.generation;
     setBusy(true); setError("");
     try {
-      if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE") await sarahInputQueue.transition(accountId, record.id, "READY_TO_SEND");
+      if (record.state === "NEEDS_ATTENTION" || record.state === "QUEUED_OFFLINE" || record.state === "WAITING_FOR_CONFIRMATION") {
+        await sarahInputQueue.transition(accountId, record.id, "READY_TO_SEND");
+      }
       await sarahInputQueue.transition(accountId, record.id, "UPLOADING");
       if (!isCurrent(accountId, operation)) return;
       const baseMessages = messages;
@@ -189,6 +214,21 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
       const response = await sarahChatService.send(record.text, session?.authUserId || '', retryHistory, record.correlationId);
       if (!isCurrent(accountId, operation)) return;
+      if (response.requiresBin) {
+        await sarahInputQueue.transition(accountId, record.id, "WAITING_FOR_CONFIRMATION", {
+          lastErrorCode: response.binError || "BIN_REQUIRED",
+        });
+        setPendingBinAction({
+          id: record.id,
+          correlationId: record.correlationId,
+          text: record.text,
+          historySnapshot: retryHistory,
+          baseMessages,
+        });
+        setBinValue("");
+        setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "");
+        return;
+      }
       await sarahInputQueue.transition(accountId, record.id, "SENT_TO_AI", { resultRef: record.correlationId });
       const hasUserMessage = baseMessages.some((message) => message.role === "user" && message.text === record.text);
       const retryMessages = hasUserMessage ? baseMessages : [...baseMessages, { role: "user" as const, text: record.text }];
@@ -204,6 +244,83 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       }
     } finally {
       if (isCurrent(accountId, operation)) { setBusy(false); await refreshQueue(accountId, operation); }
+    }
+  };
+
+  const submitBin = async () => {
+    const pendingAction = pendingBinAction;
+    const accountId = session?.authUserId || null;
+    const bin = binValue.trim();
+    if (!pendingAction || !accountId || busy || !isCurrent(accountId) || hydratedAccount !== accountId) return;
+    if (!/^\\d{4,}$/.test(bin) || bin.length > 32) {
+      setBinError("أدخل رمز BIN رقميًا صحيحًا.");
+      return;
+    }
+
+    const operation = accountScopeRef.current.generation;
+    setBusy(true);
+    setError("");
+    setBinError("");
+    try {
+      const rows = await sarahInputQueue.list(accountId);
+      const current = rows.find((row) => row.id === pendingAction.id);
+      if (!current || current.actorAccountId !== accountId) throw new Error("PENDING_ACTION_NOT_FOUND");
+      if (current.state === "WAITING_FOR_CONFIRMATION" || current.state === "NEEDS_ATTENTION") {
+        await sarahInputQueue.transition(accountId, pendingAction.id, "READY_TO_SEND");
+      }
+      await sarahInputQueue.transition(accountId, pendingAction.id, "UPLOADING");
+      if (!isCurrent(accountId, operation)) return;
+
+      const response = await sarahChatService.send(
+        pendingAction.text,
+        accountId,
+        pendingAction.historySnapshot,
+        pendingAction.correlationId,
+        bin
+      );
+      setBinValue("");
+      if (!isCurrent(accountId, operation)) return;
+      if (response.requiresBin) {
+        await sarahInputQueue.transition(accountId, pendingAction.id, "WAITING_FOR_CONFIRMATION", {
+          lastErrorCode: response.binError || "BIN_REQUIRED",
+        });
+        setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "أدخل رمز BIN لإكمال العملية.");
+        return;
+      }
+
+      await sarahInputQueue.transition(accountId, pendingAction.id, "SENT_TO_AI", { resultRef: pendingAction.correlationId });
+      const alreadyHasUserMessage = pendingAction.baseMessages.some(
+        (message) => message.role === "user" && message.text === pendingAction.text
+      );
+      const transcriptBeforeAnswer = alreadyHasUserMessage
+        ? pendingAction.baseMessages
+        : [...pendingAction.baseMessages, { role: "user" as const, text: pendingAction.text }];
+      const completedMessages = [...transcriptBeforeAnswer, { role: "assistant" as const, text: response.answer }];
+      await sarahConversationStore.save(accountId, completedMessages, conversationGenerationRef.current);
+      await sarahInputQueue.transition(accountId, pendingAction.id, "COMPLETED");
+      if (!isCurrent(accountId, operation)) return;
+      setMessages(completedMessages);
+      setPendingBinAction(null);
+      setBinError("");
+    } catch (err) {
+      if (isCurrent(accountId, operation)) {
+        try {
+          const rows = await sarahInputQueue.list(accountId);
+          const current = rows.find((row) => row.id === pendingAction.id);
+          if (current?.state === "UPLOADING") {
+            await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
+              lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
+            });
+          }
+        } catch {}
+        setBinError("تعذر إكمال العملية. يمكنك إعادة المحاولة؛ لن يُحفظ رمز BIN.");
+        setError(err instanceof Error ? err.message : "AI_REQUEST_FAILED");
+      }
+    } finally {
+      if (isCurrent(accountId, operation)) {
+        setBusy(false);
+        await refreshQueue(accountId, operation);
+      }
     }
   };
 
@@ -225,7 +342,28 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
         {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
       </div>
-      {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}
+      {pendingBinAction && <div className="rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
+        <div className="mb-1 font-semibold">تأكيد أمني مطلوب</div>
+        <p className="mb-3 text-gray-700 dark:text-gray-300">هذه العملية تتطلب رمز BIN الخاص بحسابك. أدخله هنا فقط؛ لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini.</p>
+        <input
+          type="password"
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={32}
+          value={binValue}
+          onChange={(event) => { setBinValue(event.target.value.replace(/[^0-9]/g, "").slice(0, 32)); setBinError(""); }}
+          placeholder="رمز BIN"
+          aria-label="رمز BIN"
+          className="mb-2 w-full rounded-xl border border-gray-300 bg-white px-3 py-3 text-left tracking-[0.3em] outline-none focus:border-emerald-500 dark:border-[#31554f] dark:bg-[#061f1c]"
+          disabled={busy}
+        />
+        {binError && <p className="mb-2 text-xs text-red-600 dark:text-red-300">{binError}</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={busy || !binValue.trim()} onClick={() => void submitBin()} className="rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:opacity-40">تأكيد وتنفيذ</button>
+          <button type="button" disabled={busy} onClick={() => { setPendingBinAction(null); setBinValue(""); setBinError(""); }} className="rounded-xl border border-gray-300 px-4 py-2 dark:border-[#31554f]">إلغاء</button>
+        </div>
+      </div>}
+      {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION" || item.state === "WAITING_FOR_CONFIRMATION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#123832] dark:bg-[#061f1c]">
         <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || hydratedAccount !== session?.authUserId} />
         <Button type="submit" disabled={busy || !text.trim() || hydratedAccount !== session?.authUserId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
