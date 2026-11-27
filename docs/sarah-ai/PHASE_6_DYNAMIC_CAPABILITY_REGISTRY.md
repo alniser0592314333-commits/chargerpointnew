@@ -39,9 +39,9 @@ The following twenty-four bounded capabilities are registered today:
 | reject_payment_submission | finance:approve-payment | Rejects one existing pending submission with a reason; no BIN |
 | deliver_order_item | customers:view AND orders:view AND orders:deliver | Delivers one exact item through canonical financial recognition; secure BIN required |
 | cancel_order_item | customers:view AND orders:view AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
-| cancel_order | orders:view AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
+| cancel_order | customers:view AND orders:view AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
 | get_goals_overview | goals:view OR goals:manage OR goals:requests:view OR goals:approve | Up to fifteen matching goal/request summaries plus a bounded customer directory |
-| list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Pending customer requests for temporary full-history access |
+| list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Up to twenty pending customer requests for temporary full-history access |
 | review_customer_history_request | same customer-account management permissions | Approves or rejects one pending request; approval creates the existing 24-hour server-side grant |
 | get_customer_goal_proposal | goals:manage | Official app-generated proposal from the last 28 days of qualifying activity |
 | create_customer_goal | goals:manage | Creates one active goal with app-generated values unless all three manual values are explicitly supplied |
