@@ -192,18 +192,17 @@ Deno.serve(async (req) => {
       },
     },
     {
-      name: "update_customer_controls",
+      name: "update_customer_protected_settings",
       requiredPermissionGroups: [["customers:view"], ["customers:edit"]],
       declaration: {
-        name: "update_customer_controls",
-        description: "Change a customer's debt limit, active/suspended state, or charger-fee exemption. First use lookup_customers in this same request and pass its exact code and name hint. Each protected field is separately checked against the app's live customers:debt-limit, customers:deactivate, or customers:charger-exemption permission. Debt-limit and exemption changes require the separate secure BIN confirmation; never ask for BIN in chat.",
+        name: "update_customer_protected_settings",
+        description: "Change a customer's debt limit or charger-fee exemption. First use lookup_customers in this same request and pass its exact code and name hint. Each protected field is separately checked against the app's live customers:debt-limit or customers:charger-exemption permission and uses the existing idempotent protected-settings workflow. Both changes require the separate secure BIN confirmation; never ask for BIN in chat.",
         parameters: {
           type: "OBJECT",
           properties: {
             customer_code: { type: "STRING" },
             name_hint: { type: "STRING" },
             debt_limit_minor: { type: "INTEGER", description: "Optional non-negative debt limit in ILS minor units." },
-            is_active: { type: "BOOLEAN", description: "Optional active state; false suspends the customer." },
             charger_fee_exempt: { type: "BOOLEAN", description: "Optional charger-fee exemption state." },
           },
           required: ["customer_code", "name_hint"],
@@ -885,25 +884,22 @@ Deno.serve(async (req) => {
       });
       toolResult = result.data;
       toolError = result.error;
-    } else if (toolName === "update_customer_controls") {
+    } else if (toolName === "update_customer_protected_settings") {
       const customerCode = safeText(args.customer_code, 4);
       const nameHint = safeText(args.name_hint, 64);
       const debtLimit = args.debt_limit_minor;
-      const isActive = args.is_active;
       const chargerExempt = args.charger_fee_exempt;
       if (!/^[A-Fa-f0-9]{4}$/.test(customerCode) || nameHint.length < 2
         || (debtLimit !== undefined && (typeof debtLimit !== "number" || !Number.isSafeInteger(debtLimit) || debtLimit < 0))
-        || (isActive !== undefined && typeof isActive !== "boolean")
         || (chargerExempt !== undefined && typeof chargerExempt !== "boolean")
-        || (debtLimit === undefined && isActive === undefined && chargerExempt === undefined)) {
+        || (debtLimit === undefined && chargerExempt === undefined)) {
         return { response: respond(400, { ok: false, error: "CUSTOMER_CONTROLS_INPUT_INVALID" }) };
       }
-      const result = await caller.rpc("sarah_ai_manage_customer_controls", {
+      const result = await caller.rpc("sarah_ai_update_customer_protected_settings", {
         p_request_id: actionRequestId,
         p_customer_code: customerCode,
         p_name_hint: nameHint,
         p_debt_limit_minor: debtLimit ?? null,
-        p_is_active: isActive ?? null,
         p_charger_fee_exempt: chargerExempt ?? null,
         p_bin: actionBin,
       });
