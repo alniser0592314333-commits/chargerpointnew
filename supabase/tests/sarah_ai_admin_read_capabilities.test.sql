@@ -48,6 +48,64 @@ WHERE actor_auth_user_id IN (
  '10000000-0000-4000-8000-000000000009'
 );
 
+-- Customer creation is idempotent and uses the original customers:create permission.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000001',false);
+DO $customer_create$
+DECLARE
+  v_result jsonb;
+  v_replay jsonb;
+  v_customer_id uuid;
+BEGIN
+  v_result:=public.sarah_ai_create_customer(
+    '70000000-0000-4000-8000-000000000001','عميل اختبار سارة',NULL
+  );
+  IF v_result->>'ok'<>'true'
+     OR v_result->>'customer_name'<>'عميل اختبار سارة'
+     OR v_result->>'customer_code' IS NULL
+     OR (v_result->>'debt_limit_minor')::bigint<>2000
+     OR (v_result->>'charger_fee_exempt')::boolean IS TRUE THEN
+    RAISE EXCEPTION 'Sarah customer creation did not follow the app defaults: %',v_result;
+  END IF;
+  v_customer_id:=(v_result->>'customer_id')::uuid;
+  IF NOT EXISTS(
+    SELECT 1 FROM public.customers
+    WHERE id=v_customer_id AND name='عميل اختبار سارة'
+      AND debt_limit_minor=2000 AND charger_fee_exempt IS FALSE
+  ) THEN
+    RAISE EXCEPTION 'Canonical customer creation did not persist the expected customer';
+  END IF;
+  v_replay:=public.sarah_ai_create_customer(
+    '70000000-0000-4000-8000-000000000001','عميل اختبار سارة',NULL
+  );
+  IF v_replay->>'idempotent_replay'<>'true'
+     OR (SELECT count(*) FROM public.customers WHERE name='عميل اختبار سارة')<>1 THEN
+    RAISE EXCEPTION 'Customer creation retry was not idempotent: %',v_replay;
+  END IF;
+END;
+$customer_create$;
+RESET ROLE;
+
+-- An ordinary admin without customers:create cannot create a customer through Sarah.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000009',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000009',false);
+DO $customer_create_permission_gate$
+BEGIN
+  BEGIN
+    PERFORM public.sarah_ai_create_customer(
+      '70000000-0000-4000-8000-000000000002','غير مصرح',NULL
+    );
+    RAISE EXCEPTION 'Admin without customers:create unexpectedly created a customer';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$customer_create_permission_gate$;
+RESET ROLE;
+
 
 -- Seed financial balances as the fixture owner; browser roles never write these tables directly.
 INSERT INTO public.financial_ledger(customer_id,amount_minor)
