@@ -547,9 +547,10 @@ BEGIN
   END IF;
   v_session_id := (auth.jwt()->>'session_id')::uuid;
 
-  v_admin_id := public._cp_assert_active_admin_permission('customers:view');
+  PERFORM public._cp_assert_active_admin_permission('customers:view');
   PERFORM public._cp_assert_active_admin_permission('orders:create');
   PERFORM public._cp_assert_active_admin_permission('orders:edit');
+  v_admin_id := (public.get_current_admin_profile()->>'admin_id')::uuid;
 
   SELECT a.role INTO v_admin_role
   FROM public.admins a
