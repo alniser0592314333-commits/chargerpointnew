@@ -1660,7 +1660,7 @@ Deno.serve(async (req) => {
           tomorrowCloseTime: args.tomorrow_close_time ?? cfg.tomorrowCloseTime,
           tomorrowDescription: args.tomorrow_description ?? cfg.tomorrowDescription ?? "",
         };
-        const saved = await caller.functions.invoke("business-hours", { body: { config: nextConfig } });
+        const saved = await caller.functions.invoke("business-hours", { body: { config: nextConfig, requestId: actionRequestId } });
         toolResult = saved.data;
         if (saved.error) {
           let endpointError: Record<string, unknown> = {};
