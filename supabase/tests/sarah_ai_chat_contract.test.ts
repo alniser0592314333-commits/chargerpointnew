@@ -539,7 +539,7 @@ describe("Sarah chat gateway security contract", () => {
   it("keeps model instructions aligned with all enabled capability families", () => {
     expect(source).toContain("Goal operations use only exact customer_id, goal_id, and request_id values returned by get_goals_overview");
     expect(source).toContain("Customer-history review uses only a request_id returned by list_customer_history_requests");
-    expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours changes, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
+    expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours changes, AI provider model/generation-setting changes and explicitly requested provider clearing, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
     expect(source).not.toContain("The currently enabled mutations are create_order_with_items and the payment actions");
     expect(source).toContain("if a payment/order action returns BIN_REQUIRED");
   });
