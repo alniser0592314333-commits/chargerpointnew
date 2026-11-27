@@ -171,6 +171,12 @@ BEGIN
     PERFORM public._cp_assert_active_admin_permission('goals:manage');
   ELSIF v_action IN ('APPROVE_GOAL_REQUEST','REJECT_GOAL_REQUEST') THEN
     PERFORM public._cp_assert_active_admin_permission('goals:approve');
+  ELSIF v_action='REVIEW_GOAL_CANCELLATION' THEN
+    BEGIN
+      PERFORM public._cp_assert_active_admin_permission('goals:approve');
+    EXCEPTION WHEN insufficient_privilege THEN
+      PERFORM public._cp_assert_active_admin_permission('goals:manage');
+    END;
   END IF;
 
   IF p_reason IS NOT NULL AND (pg_catalog.char_length(p_reason)>500 OR p_reason ~ '[[:cntrl:]]') THEN
