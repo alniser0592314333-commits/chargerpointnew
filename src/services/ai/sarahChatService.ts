@@ -55,7 +55,7 @@ export const sarahChatService = {
       ? requestId
       : crypto.randomUUID();
 
-    if (bin !== undefined && (!/^\\d{4,}$/.test(bin) || bin.length > 32)) throw new Error("BIN_FORMAT_INVALID");
+    if (bin !== undefined && (!/^\d{4,}$/.test(bin) || bin.length > 32)) throw new Error("BIN_FORMAT_INVALID");
 
     const requestBody: Record<string, unknown> = {
       text: clean,
