@@ -42,6 +42,7 @@ BEGIN
       AND i.deleted_at IS NULL
       AND o.deleted_at IS NULL
       AND COALESCE(o.status,'')<>'cancelled'
+      AND o.cancelled_at IS NULL
       AND lower(COALESCE(i.status,''))='delivered'
       AND i.financial_status='RECOGNIZED'
       AND i.replacement_of_item_id IS NULL
