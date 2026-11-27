@@ -246,6 +246,19 @@ Deno.serve(async (req) => {
   let taskState = loadedTask.state && typeof loadedTask.state === "object" && !Array.isArray(loadedTask.state)
     ? loadedTask.state as Record<string, unknown>
     : initialTaskState;
+  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
+    return respond(200, {
+      ok: true,
+      answer: taskState.answer,
+      modelId: typeof taskState.modelId === "string" ? taskState.modelId : modelId,
+    });
+  }
+  if (taskStatus === "FAILED") {
+    return respond(504, {
+      ok: false,
+      error: safeText(taskState.failureCode, 80) || "AI_TASK_FAILED",
+    });
+  }
   if (!Number.isSafeInteger(taskVersion) || taskVersion < 1) {
     return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_INVALID" });
   }
