@@ -159,6 +159,7 @@ export const sarahChatService = {
         AI_CUSTOMER_NEEDS_DISAMBIGUATION: "وجدت أكثر من عميل مطابق. حدّد العميل المقصود قبل المتابعة.",
         AI_CAPABILITY_CONFLICT: "لم يتم تنفيذ العملية بسبب تعارض أو نقص في البيانات. لم يتم تأكيد أي تغيير.",
         BIN_CONFIRMATION_INVALID: "تعذر استعادة العملية الأمنية. أعد طلب العملية من جديد.",
+        BIN_MUST_USE_SECURE_PROMPT: "لا ترسل رمز BIN داخل المحادثة. أدخله فقط في خانة التأكيد الأمني التي تظهر داخل سارة.",
       };
       throw new Error(friendly[code] || code);
     }
