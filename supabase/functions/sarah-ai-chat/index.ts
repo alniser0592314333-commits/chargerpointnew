@@ -403,6 +403,30 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "adjust_customer_finances",
+      requiredPermissionGroups: [
+        ["customers:view", "customers:read"],
+        ["customers:financial-view", "finance:view", "finances:read"],
+        ["finance:credit-adjustment", "finance:refund"],
+      ],
+      declaration: {
+        name: "adjust_customer_finances",
+        description: "Add customer credit, consume customer credit, or refund a prior positive payment. First use lookup_customers in this same request. For REFUND, also use get_customer_financial_history and pass the exact payment entry_id. The database enforces the exact finance:credit-adjustment or finance:refund permission, prevents over-refunds, and requires secure BIN for adding credit or refunds. Never ask for BIN in chat.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            action: { type: "STRING", enum: ["ADD_CREDIT", "USE_CREDIT", "REFUND"] },
+            customer_code: { type: "STRING" },
+            name_hint: { type: "STRING" },
+            amount_minor: { type: "INTEGER", description: "Positive amount in ILS minor units; 100 = ₪1." },
+            reference_event_id: { type: "STRING", description: "Required for REFUND: exact positive PAYMENT entry_id from get_customer_financial_history." },
+            note: { type: "STRING", description: "Optional audit reference, up to 500 characters." },
+          },
+          required: ["action", "customer_code", "name_hint", "amount_minor"],
+        },
+      },
+    },
+    {
       name: "get_customer_financial_summary",
       requiredPermissionGroups: [
         ["customers:view"],
