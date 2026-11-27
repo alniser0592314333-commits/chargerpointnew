@@ -1030,22 +1030,55 @@ Deno.serve(async (req) => {
   );
   const enabledCapabilityNames = new Set<string>(enabledCapabilities.map((capability) => capability.name));
   const registeredCapabilityNames = new Set<string>(capabilityRegistry.map((capability) => capability.name));
-  const safeParallelReadBatch = new Set<string>(["lookup_customers", "get_customer_orders", "get_device_catalog", "list_pending_payments"]);
-const deferredMutationPrerequisites: Record<string, string[]> = {
-  create_order_with_items: ["lookup_customers", "get_device_catalog"],
-  add_item_to_existing_order: ["lookup_customers", "get_customer_orders", "get_device_catalog"],
-  record_and_approve_customer_payment: ["lookup_customers"],
-  approve_payment_submission: ["list_pending_payments"],
-  reject_payment_submission: ["list_pending_payments"],
-  create_customer: ["lookup_customers"],
-  update_customer_profile: ["lookup_customers"],
-  adjust_customer_finances: ["lookup_customers"],
-  update_customer_protected_settings: ["lookup_customers"],
-  deliver_order_item: ["lookup_customers", "get_customer_orders"],
-  cancel_order_item: ["lookup_customers", "get_customer_orders"],
-  cancel_order: ["lookup_customers", "get_customer_orders"],
-  set_customer_active_status: ["lookup_customers"],
-};
+  const readOnlyCapabilityNames = new Set<string>([
+    "lookup_customers", "get_customer_profile", "lookup_customer_accounts",
+    "get_device_catalog", "get_financial_summary", "list_pending_payments",
+    "get_customer_financial_summary", "get_customer_financial_history",
+    "get_business_day_orders", "get_customer_orders", "list_customer_history_requests",
+    "get_customer_goal_proposal", "get_goals_overview", "list_subordinate_admins",
+    "get_admin_custom_permissions", "get_admin_audit_logs", "get_business_hours_settings",
+    "get_jawwal_pay_recipient", "get_local_sync_status", "get_sarah_ai_provider_settings",
+    "test_sarah_ai_provider_connection",
+  ]);
+  const readPrerequisites: Record<string, string[]> = {
+    get_customer_profile: ["lookup_customers"],
+    get_customer_financial_summary: ["lookup_customers"],
+    get_customer_financial_history: ["lookup_customers"],
+    get_customer_orders: ["lookup_customers"],
+  };
+  const deferredMutationPrerequisites: Record<string, string[]> = {
+    create_order_with_items: ["lookup_customers", "get_device_catalog"],
+    add_item_to_existing_order: ["lookup_customers", "get_customer_orders", "get_device_catalog"],
+    record_and_approve_customer_payment: ["lookup_customers"],
+    approve_payment_submission: ["list_pending_payments"],
+    reject_payment_submission: ["list_pending_payments"],
+    create_customer: ["lookup_customers"],
+    update_customer_profile: ["lookup_customers"],
+    adjust_customer_finances: ["lookup_customers"],
+    update_customer_protected_settings: ["lookup_customers"],
+    deliver_order_item: ["lookup_customers", "get_customer_orders"],
+    cancel_order_item: ["lookup_customers", "get_customer_orders"],
+    cancel_order: ["lookup_customers", "get_customer_orders"],
+    set_customer_active_status: ["lookup_customer_accounts"],
+    create_device_type: ["get_device_catalog"],
+    update_device_type: ["get_device_catalog"],
+    retire_device_type: ["get_device_catalog"],
+    renumber_day_orders: ["get_business_day_orders"],
+    review_customer_history_request: ["list_customer_history_requests"],
+    create_customer_goal: ["get_goals_overview"],
+    approve_goal_request: ["get_goals_overview"],
+    reject_goal_request: ["get_goals_overview"],
+    update_customer_goal: ["get_goals_overview"],
+    cancel_customer_goal: ["get_goals_overview"],
+    review_goal_cancellation: ["get_goals_overview"],
+    set_admin_permission: ["list_subordinate_admins", "get_admin_custom_permissions"],
+    suspend_admin: ["list_subordinate_admins"],
+    activate_admin: ["list_subordinate_admins"],
+    update_business_hours_settings: ["get_business_hours_settings"],
+    update_jawwal_pay_recipient: ["get_jawwal_pay_recipient"],
+    update_sarah_ai_provider_settings: ["get_sarah_ai_provider_settings"],
+    clear_sarah_ai_provider_settings: ["get_sarah_ai_provider_settings"],
+  };
   const binProtectedCapabilityNames = new Set<string>([
     "record_and_approve_customer_payment","approve_payment_submission","adjust_customer_finances",
     "update_customer_protected_settings","deliver_order_item","cancel_order_item","cancel_order",
@@ -2310,7 +2343,8 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
       let currentContents = contents;
       let completed = false;
 
-      for (let toolStep = 0; toolStep < 4; toolStep++) {
+      const verifiedPrerequisiteNames = new Set<string>();
+      while (!completed) {
         const candidateContent = currentCandidate?.content as Record<string, unknown> | undefined;
         const parts = Array.isArray(candidateContent?.parts)
           ? candidateContent.parts as Array<Record<string, unknown>>
@@ -2338,41 +2372,58 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
           console.warn("Sarah rejected a permission-filtered tool call", { reason: "capability_not_enabled" });
           return respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" });
         }
-        const names = requestedCalls.map((call) => call.name);
-        const uniqueNames = new Set(names).size === requestedCalls.length;
-        const readCalls = requestedCalls.filter((call) => safeParallelReadBatch.has(call.name));
-        const mutationCalls = requestedCalls.filter((call) => !safeParallelReadBatch.has(call.name));
-        const safeReadOnlyBatch = requestedCalls.length > 1
-          && uniqueNames
-          && mutationCalls.length === 0
-          && readCalls.every((call) => call.name !== "get_customer_orders" || names.includes("lookup_customers"));
-        const deferredMutationCall = requestedCalls.length > 1 && mutationCalls.length === 1 ? mutationCalls[0] : null;
-        const requiredPrerequisites = deferredMutationCall
-          ? deferredMutationPrerequisites[deferredMutationCall.name]
-          : null;
-        const safeDeferredMutationBatch = requestedCalls.length > 1
-          && requestedCalls.length <= 5
-          && uniqueNames
-          && Boolean(requiredPrerequisites)
-          && requiredPrerequisites!.every((requiredName) => readCalls.some((call) => call.name === requiredName))
-          && (!readCalls.some((call) => call.name === "get_customer_orders")
-            || readCalls.some((call) => call.name === "lookup_customers"));
-        if (requestedCalls.length > 1 && !safeReadOnlyBatch && !safeDeferredMutationBatch) {
-          console.warn("Sarah rejected an unsafe parallel tool batch", {
-            reason: "parallel_batch_missing_safe_prerequisites",
-            count: requestedCalls.length,
-          });
-          return respond(409, { ok: false, error: "AI_TOOL_CALL_BATCH_NOT_SAFE" });
+        const readCalls = requestedCalls.filter((call) => readOnlyCapabilityNames.has(call.name));
+        const mutationCalls = requestedCalls.filter((call) => !readOnlyCapabilityNames.has(call.name));
+        const requiredForMutation = (call: { name: string; args: Record<string, unknown> }) => {
+          const required = deferredMutationPrerequisites[call.name];
+          if (!required) return null;
+          if (call.name === "adjust_customer_finances" && String(call.args.action || "").toUpperCase() === "REFUND") {
+            return [...required, "get_customer_financial_history"];
+          }
+          return required;
+        };
+        const requiredForRead = (call: { name: string; args: Record<string, unknown> }) =>
+          readPrerequisites[call.name] || [];
+        const missingForMutation = (call: { name: string; args: Record<string, unknown> }) => {
+          const required = requiredForMutation(call);
+          return required
+            ? required.filter((name) => !verifiedPrerequisiteNames.has(name) && !readCalls.some((read) => read.name === name))
+            : ["CAPABILITY_PREREQUISITE_REGISTRY_MISSING"];
+        };
+        const missingForRead = (call: { name: string; args: Record<string, unknown> }) =>
+          requiredForRead(call).filter((name) => !verifiedPrerequisiteNames.has(name) && !readCalls.some((read) => read.name === name));
+        const missingPrerequisites = requestedCalls.map((call) =>
+          readOnlyCapabilityNames.has(call.name) ? missingForRead(call) : missingForMutation(call)
+        );
+        const shouldDeferMutations = mutationCalls.length > 0
+          && (readCalls.length > 0 || mutationCalls.some((call) => {
+            const required = requiredForMutation(call);
+            return !required || required.some((name) => !verifiedPrerequisiteNames.has(name));
+          }));
+        const readExecutionOrder = [
+          "lookup_customers", "lookup_customer_accounts", "get_customer_orders",
+          "get_device_catalog", "list_pending_payments", "get_customer_financial_history",
+          "get_business_day_orders", "list_customer_history_requests", "get_goals_overview",
+          "list_subordinate_admins", "get_admin_custom_permissions", "get_business_hours_settings",
+          "get_jawwal_pay_recipient", "get_sarah_ai_provider_settings",
+        ];
+        const indexedCalls = requestedCalls.map((call, index) => ({ ...call, index }));
+        let executionCalls = indexedCalls.filter((call) =>
+          readOnlyCapabilityNames.has(call.name) && missingPrerequisites[call.index].length === 0
+        );
+        if (mutationCalls.length > 0 && !shouldDeferMutations) {
+          executionCalls = indexedCalls.filter((call) => !readOnlyCapabilityNames.has(call.name));
+        } else if (mutationCalls.length === 0) {
+          executionCalls = indexedCalls.filter((call) => readOnlyCapabilityNames.has(call.name));
         }
+        executionCalls.sort((a, b) => {
+          const aRead = readOnlyCapabilityNames.has(a.name);
+          const bRead = readOnlyCapabilityNames.has(b.name);
+          if (aRead && bRead) return readExecutionOrder.indexOf(a.name) - readExecutionOrder.indexOf(b.name);
+          return a.index - b.index;
+        });
 
-        // Run read prerequisites in dependency order. If Gemini emitted one
-        // mutation in the same batch, do not execute it: return an explicit
-        // executed:false response so Gemini must retry it alone with the reads.
-        const executionOrder = ["lookup_customers", "get_customer_orders", "get_device_catalog", "list_pending_payments"];
-        const executionCalls = requestedCalls.length === 1
-          ? requestedCalls
-          : [...readCalls].sort((a, b) => executionOrder.indexOf(a.name) - executionOrder.indexOf(b.name));
-        const resultsByName = new Map<string, unknown>();
+        const resultsByIndex = new Map<number, unknown>();
         for (const requestedCall of executionCalls) {
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
@@ -2392,7 +2443,15 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
                 },
               });
             }
-            return execution.response;
+            if (execution.response.status === 401) return execution.response;
+            resultsByIndex.set(requestedCall.index, {
+              ok: false,
+              error: execution.response.status === 403 ? "PERMISSION_DENIED"
+                : execution.response.status === 404 ? "TARGET_NOT_FOUND"
+                : "ACTION_FAILED",
+              status: execution.response.status,
+            });
+            continue;
           }
           const actionResult = execution.result && typeof execution.result === "object" && !Array.isArray(execution.result)
             ? execution.result as Record<string, unknown>
@@ -2413,20 +2472,38 @@ const deferredMutationPrerequisites: Record<string, string[]> = {
               },
             });
           }
-          resultsByName.set(requestedCall.name, execution.result);
+          resultsByIndex.set(requestedCall.index, execution.result);
+          const succeeded = actionResult.ok !== false && actionResult.success !== false;
+          if (succeeded && readOnlyCapabilityNames.has(requestedCall.name)) {
+            verifiedPrerequisiteNames.add(requestedCall.name);
+          }
         }
-        if (deferredMutationCall) {
-          resultsByName.set(deferredMutationCall.name, {
-            ok: false,
-            executed: false,
-            retry_after_prerequisites: true,
-            error: "PREREQUISITES_RETURNED_RETRY_ACTION",
-          });
+
+        for (let index = 0; index < requestedCalls.length; index++) {
+          if (resultsByIndex.has(index)) continue;
+          const call = requestedCalls[index];
+          const missing = missingPrerequisites[index];
+          if (readOnlyCapabilityNames.has(call.name)) {
+            resultsByIndex.set(index, {
+              ok: false,
+              executed: false,
+              missing_prerequisites: missing,
+              error: "READ_PREREQUISITES_REQUIRED",
+            });
+          } else {
+            resultsByIndex.set(index, {
+              ok: false,
+              executed: false,
+              retry_after_prerequisites: true,
+              missing_prerequisites: missing,
+              error: "MUTATION_DEFERRED_UNTIL_READS_COMPLETE",
+            });
+          }
         }
-        const functionResponses: Array<Record<string, unknown>> = requestedCalls.map((requestedCall) => ({
+        const functionResponses: Array<Record<string, unknown>> = requestedCalls.map((requestedCall, index) => ({
           functionResponse: {
             name: requestedCall.name,
-            response: { result: resultsByName.get(requestedCall.name) },
+            response: { result: resultsByIndex.get(index) },
           },
         }));
 
