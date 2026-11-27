@@ -133,7 +133,11 @@ VALUES
  ('00000000-0000-4000-8000-000000000002','finance:approve-payment',true),
  ('00000000-0000-4000-8000-000000000007','ai:use',true),
  ('00000000-0000-4000-8000-000000000007','customers:view',true),
- ('00000000-0000-4000-8000-000000000007','orders:create',true);
+ ('00000000-0000-4000-8000-000000000007','orders:create',true),
+ ('00000000-0000-4000-8000-000000000008','ai:use',true),
+ ('00000000-0000-4000-8000-000000000008','customers:financial-view',true),
+ ('00000000-0000-4000-8000-000000000008','orders:view',true),
+ ('00000000-0000-4000-8000-000000000008','orders:deliver',true);
 
 CREATE OR REPLACE FUNCTION public.record_canonical_change(
   p_table_name text,
