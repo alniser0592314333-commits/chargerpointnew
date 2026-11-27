@@ -75,7 +75,7 @@ BEGIN
   IF v_actor IS NULL OR v_session IS NULL THEN
     RAISE EXCEPTION 'Active authenticated session required' USING ERRCODE = '28000';
   END IF;
-  IF p_request_id IS NULL OR p_request_hash IS NULL OR p_request_hash !~ '^[0-9a-f]{64}
+  IF p_request_id IS NULL OR p_request_hash IS NULL OR (length(p_request_hash) <> 64 OR p_request_hash ~ '[^0-9a-f]')
      OR p_initial_state IS NULL OR jsonb_typeof(p_initial_state) <> 'object'
      OR pg_column_size(p_initial_state) > 524288
      OR public.sarah_ai_task_state_has_forbidden_keys(p_initial_state) THEN
