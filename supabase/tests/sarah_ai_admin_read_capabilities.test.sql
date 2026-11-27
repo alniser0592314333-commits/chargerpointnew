@@ -149,7 +149,10 @@ BEGIN
     RAISE EXCEPTION 'Protected customer setting lookup failed: %',v_lookup;
   END IF;
   v_code:=v_lookup->'matches'->0->>'customer_code';
-  v_customer_id:=(v_lookup->'matches'->0->>'customer_id')::uuid;
+  SELECT id INTO v_customer_id
+  FROM public.customers
+  WHERE name='عميل اختبار سارة معدل' AND is_active IS TRUE AND deleted_at IS NULL
+  LIMIT 1;
 
   BEGIN
     PERFORM public.sarah_ai_update_customer_protected_settings(
