@@ -749,16 +749,19 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).toContain("confirmedResults");
   });
 
-  it("revalidates live permissions before returning a completed task's saved answer", () => {
+  it("revalidates all saved tool and prerequisite permissions before resuming any progressed task", () => {
     const capabilityGate = source.indexOf("const enabledCapabilityNames");
+    const progressGuard = source.indexOf("const taskHasProgress");
     const completedFastPath = source.indexOf('if (taskStatus === "COMPLETED"');
     expect(capabilityGate).toBeGreaterThan(-1);
-    expect(completedFastPath).toBeGreaterThan(capabilityGate);
-    const completedGuard = source.slice(completedFastPath, source.indexOf("const readOnlyCapabilityNames", completedFastPath));
-    expect(completedGuard).toContain("taskState.executedCapabilityNames");
-    expect(completedGuard).toContain("savedExecutedNames.some(");
-    expect(completedGuard).toContain("!enabledCapabilityNames.has(name)");
-    expect(completedGuard).toContain("AI_CAPABILITY_PERMISSION_REQUIRED");
+    expect(progressGuard).toBeGreaterThan(capabilityGate);
+    expect(completedFastPath).toBeGreaterThan(progressGuard);
+    const replayGuard = source.slice(progressGuard, source.indexOf("const readOnlyCapabilityNames", progressGuard));
+    expect(replayGuard).toContain("taskState.phase !== \"INITIAL\" || taskStatus !== \"RUNNING\"");
+    expect(replayGuard).toContain("taskState.executedCapabilityNames");
+    expect(replayGuard).toContain("savedExecutedNames.some(");
+    expect(replayGuard).toContain("!enabledCapabilityNames.has(name)");
+    expect(replayGuard).toContain("AI_CAPABILITY_PERMISSION_REQUIRED");
     expect(source).toContain("executedCapabilityNames.add(requestedCall.name)");
     expect(source).toContain("executedCapabilityNames.add(confirmationName)");
     expect(source).toContain("executedCapabilityNames: [...executedCapabilityNames]");
