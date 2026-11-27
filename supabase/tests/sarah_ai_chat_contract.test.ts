@@ -17,6 +17,7 @@ const goalManagementMigration = read("supabase/migrations/20261127130000_sarah_a
 const financialHistoryMigration = read("supabase/migrations/20261127140000_sarah_ai_customer_financial_history.sql");
 const permissionAlignmentMigration = read("supabase/migrations/20261127150000_sarah_ai_permission_projection_alignment.sql");
 const deviceCatalogMigration = read("supabase/migrations/20261127160000_sarah_ai_device_catalog_read.sql");
+const customerCreateMigration = read("supabase/migrations/20261127170000_sarah_ai_customer_create.sql");
 
 
 describe("Sarah chat gateway security contract", () => {
@@ -190,6 +191,17 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("DEVICE_TYPE_AMBIGUOUS");
     expect(adminReadMigration).toContain("DEBT_LIMIT_EXCEEDED");
     expect(adminReadMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_create_order_with_items(uuid,text,text,jsonb,text) TO service_role");
+  });
+
+  it("registers customer creation through the canonical command and customers:create permission", () => {
+    expect(source).toContain('name: "create_customer"');
+    expect(source).toContain('requiredPermissionGroups: [["customers:create"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_create_customer"');
+    expect(customerCreateMigration).toContain("public._cp_assert_active_admin_permission('customers:create')");
+    expect(customerCreateMigration).toContain("'CREATE_CUSTOMER','customers'");
+    expect(customerCreateMigration).toContain("'debtLimitMinor',2000");
+    expect(customerCreateMigration).toContain("idempotent_replay");
+    expect(customerCreateMigration).not.toContain("'bin'");
   });
 
   it("registers device catalog reads under the original devices:view permission", () => {
