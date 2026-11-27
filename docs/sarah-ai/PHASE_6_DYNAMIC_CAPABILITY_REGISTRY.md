@@ -26,23 +26,23 @@ The following twenty-seven bounded capabilities are registered today:
 
 | Tool | Required application permission | Data returned |
 |---|---|---|
-| lookup_customers | customers:view | Up to five active customer names and display codes |
-| get_customer_profile | customers:view | Up to five bounded non-financial profile matches after a same-session lookup proof |
-| get_customer_financial_summary | customers:view AND customers:financial-view | One authoritative customer balance in ILS minor units |
-| get_customer_financial_history | customers:view AND customers:financial-view | Up to twenty recent authoritative ledger entries with bounded references |
-| get_customer_orders | customers:view AND orders:view | Up to ten recent orders and bounded item status/charge details |
-| create_order_with_items | customers:view AND orders:create AND orders:edit | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
+| lookup_customers | customers:view OR customers:read | Up to five active customer names and display codes |
+| get_customer_profile | customers:view OR customers:read | Up to five bounded non-financial profile matches after a same-session lookup proof |
+| get_customer_financial_summary | (customers:view OR customers:read) AND (customers:financial-view OR finance:view OR finances:read) | One authoritative customer balance in ILS minor units |
+| get_customer_financial_history | (customers:view OR customers:read) AND (customers:financial-view OR finance:view OR finances:read) | Up to twenty recent authoritative ledger entries with bounded references |
+| get_customer_orders | (customers:view OR customers:read) AND (orders:view OR orders:read) | Up to ten recent orders and bounded item status/charge details |
+| create_order_with_items | (customers:view OR customers:read) AND orders:create AND (orders:edit OR orders:write) | One atomic order with up to ten catalog-resolved items; today's day is opened only with settings:manage |
 | update_customer_profile | (customers:view OR customers:read) AND (customers:edit OR customers:write) | Updates only name, phone, or notes after a same-session lookup; protected debt-limit and charger-fee exemption fields remain excluded |
 | create_customer | customers:create | Creates one active customer through the canonical command with the app's default ₪20 debt limit and no charger exemption; stable request ID prevents duplicate creation |
-| get_device_catalog | devices:view | Up to one hundred non-retired device types with active-state, bilingual names, base prices, and charger policy |
+| get_device_catalog | devices:view | Up to one hundred active device types, bilingual names, base prices, and charger policy |
 | get_financial_summary | finance:view OR reports:view | Aggregate ledger record count, net balance, and generation time |
 | list_pending_payments | finance:approve-payment OR finance:create-payment | Up to twenty pending manual, customer QR, and Jawwal Pay submissions |
 | record_and_approve_customer_payment | customers:view AND finance:create-payment AND finance:approve-payment | One manual CASH payment through the existing pending-submission + approval workflow; requires secure BIN |
 | approve_payment_submission | finance:approve-payment AND finance:create-payment | Approves one existing pending submission using its ID and amount; requires secure BIN |
 | reject_payment_submission | finance:approve-payment | Rejects one existing pending submission with a reason; no BIN |
-| deliver_order_item | customers:view AND orders:view AND orders:deliver | Delivers one exact item through canonical financial recognition; secure BIN required |
-| cancel_order_item | customers:view AND orders:view AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
-| cancel_order | customers:view AND orders:view AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
+| deliver_order_item | (customers:view OR customers:read) AND (orders:view OR orders:read) AND orders:deliver | Delivers one exact item through canonical financial recognition; secure BIN required |
+| cancel_order_item | (customers:view OR customers:read) AND (orders:view OR orders:read) AND orders:cancel | Cancels one exact item through canonical financial reversal; secure BIN required |
+| cancel_order | (customers:view OR customers:read) AND (orders:view OR orders:read) AND orders:cancel | Cancels one full order through canonical item-level reversals; secure BIN required |
 | get_goals_overview | goals:view OR goals:manage OR goals:requests:view OR goals:approve | Up to fifteen matching goal/request summaries plus a bounded customer directory |
 | list_customer_history_requests | customers:edit OR customers:write OR customers:manage OR customer_accounts:manage OR customer_accounts:reset OR admin:manage | Up to twenty pending customer requests for temporary full-history access |
 | review_customer_history_request | same customer-account management permissions | Approves or rejects one pending request; approval creates the existing 24-hour server-side grant |
@@ -54,7 +54,7 @@ The following twenty-seven bounded capabilities are registered today:
 | cancel_customer_goal | goals:manage | Cancels one active goal through the existing admin RPC |
 | review_goal_cancellation | goals:approve OR goals:manage | Approves/rejects one pending cancellation request through the existing admin RPC |
 
-Read capabilities include customer/profile/balance/order lookup, aggregate financial reporting, pending payment lists, goal/request summaries, and official goal proposals. Enabled mutations include order creation, delivery, item/order cancellation, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review.
+Read capabilities include customer/profile/balance/order lookup, active device catalog, aggregate financial reporting, pending payment lists, goal/request summaries, and official goal proposals. Enabled mutations include customer creation and basic profile editing, order creation, delivery, item/order cancellation, manual CASH payment record-and-approval, approval/rejection of existing pending payment submissions, and goal creation, request approval/rejection, goal configuration updates, goal cancellation, and cancellation-request review.
 
 Order creation calls the existing canonical CREATE_ORDER and ADD_ORDER_ITEM commands inside one database transaction; any failed item rolls back the whole order. It rechecks active customer/device state, the debt-limit rule, duplicate same-customer/day orders, open-day state, and current account permissions. If today's Palestine business day does not exist, it is created only when the actor has settings:manage; a closed day is never reopened.
 
