@@ -92,48 +92,42 @@ Deno.serve(async (req: Request) => {
   }
 
   const bearer = req.headers.get("Authorization") || "";
-  const match = bearer.match(/^Bearer\s+(.+)$/i);
+  const match = bearer.match(/^Bearer\\s+(.+)$/i);
   if (!match) return response({ error: "ADMIN_AUTH_REQUIRED" }, 401);
-
-  const { data: userResult, error: userError } = await adminClient.auth.getUser(match[1]);
-  if (userError || !userResult?.user) return response({ error: "ADMIN_AUTH_REQUIRED" }, 401);
   if (!anonKey) return response({ error: "SERVER_NOT_CONFIGURED" }, 500);
 
-  // Service-role table reads below do not inherit the caller's RLS or app
-  // session. Validate the same bearer through the database's strict session
-  // registry before using elevated credentials for this admin-only mutation.
+  // All authorization and the write itself use the caller JWT. The service-role
+  // client below is read-only (existing config + reset generation only).
   const callerClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: `Bearer ${match[1]}` } },
     auth: { persistSession: false, autoRefreshToken: false },
   });
+  const { data: userResult, error: userError } = await callerClient.auth.getUser(match[1]);
+  if (userError || !userResult?.user) return response({ error: "ADMIN_AUTH_REQUIRED" }, 401);
+
   const { data: activeSession, error: activeSessionError } =
     await callerClient.rpc("is_active_admin_session");
   if (activeSessionError || activeSession !== true) {
     return response({ error: "ADMIN_SESSION_REQUIRED" }, 401);
   }
 
-  const { data: admin, error: adminError } = await adminClient
-    .from("admins")
-    .select("id, role, permissions, is_active, disabled_at")
-    .eq("auth_user_id", userResult.user.id)
-    .maybeSingle();
-
-  if (adminError || !admin || !admin.is_active || admin.disabled_at) {
+  const { data: profile, error: profileError } = await callerClient.rpc("get_current_admin_profile");
+  if (
+    profileError ||
+    profile?.authenticated !== true ||
+    profile?.is_admin !== true ||
+    profile?.is_active !== true ||
+    profile?.auth_user_id !== userResult.user.id ||
+    typeof profile?.admin_id !== "string"
+  ) {
     return response({ error: "SETTINGS_PERMISSION_DENIED" }, 403);
   }
 
-  // Resolve the actor's current effective permissions through the same
-  // database helper used by the rest of the application. Do not trust the
-  // potentially stale admins.permissions snapshot or duplicate role logic.
   const { data: effectivePermissions, error: permissionsError } =
-    await callerClient.rpc("get_effective_permissions", { p_admin_id: admin.id });
-
-  if (permissionsError) {
-    return response({ error: "SETTINGS_PERMISSION_CHECK_FAILED" }, 403);
-  }
+    await callerClient.rpc("get_effective_permissions", { p_admin_id: profile.admin_id });
+  if (permissionsError) return response({ error: "SETTINGS_PERMISSION_CHECK_FAILED" }, 403);
   const canManage = Array.isArray(effectivePermissions) &&
     effectivePermissions.some((row: { permission?: string }) => row.permission === "settings:manage");
-
   if (!canManage) return response({ error: "SETTINGS_PERMISSION_DENIED" }, 403);
 
   let input: any;
@@ -155,12 +149,23 @@ Deno.serve(async (req: Request) => {
     return response({ error: "INVALID_BUSINESS_HOURS_CONFIG" }, 400);
   }
 
-  const { data: existing } = await adminClient
+  const { data: existing, error: existingError } = await adminClient
     .from("system_settings")
     .select("value_json")
     .eq("key", settingKey)
     .maybeSingle();
+  if (existingError) return response({ error: "SETTINGS_READ_FAILED" }, 500);
 
+  const { data: generationRow, error: generationError } = await adminClient
+    .from("system_settings")
+    .select("value_number")
+    .eq("key", "server_reset_generation")
+    .maybeSingle();
+  if (generationError) return response({ error: "SETTINGS_READ_FAILED" }, 500);
+
+  const resetGeneration = Number.isSafeInteger(generationRow?.value_number)
+    ? Number(generationRow.value_number)
+    : 1;
   const config: HoursConfig = {
     ...defaults(),
     isActive: incoming.isActive,
@@ -178,18 +183,44 @@ Deno.serve(async (req: Request) => {
     lastUpdated: new Date().toISOString(),
   };
 
-  const { error: saveError } = await adminClient.from("system_settings").upsert({
-    key: settingKey,
-    value_type: "json",
-    value_string: null,
-    value_number: null,
-    value_boolean: null,
-    value_json: config,
-    description: "Shared business hours configuration for the public landing page",
-    updated_at: new Date().toISOString(),
-    updated_by: userResult.user.id,
-  }, { onConflict: "key" });
+  const requestId = typeof input.requestId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId)
+    ? input.requestId
+    : crypto.randomUUID();
+  const payloadForHash = JSON.stringify({ key: settingKey, config, resetGeneration });
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payloadForHash));
+  const payloadHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
-  if (saveError) return response({ error: "SETTINGS_SAVE_FAILED" }, 500);
+  // SET_SYSTEM_SETTING is the app's canonical command. Its database wrapper
+  // rechecks the current account session and settings:manage permission.
+  const { data: commandResult, error: commandError } = await callerClient.rpc("execute_sync_command", {
+    p_command_id: requestId,
+    p_command_type: "SET_SYSTEM_SETTING",
+    p_aggregate_type: "system_settings",
+    p_aggregate_id: crypto.randomUUID(),
+    p_payload: {
+      key: settingKey,
+      valueType: "json",
+      valueString: null,
+      valueNumber: null,
+      valueBoolean: null,
+      valueJson: config,
+      resetGeneration,
+      deviceId: "business-hours-edge",
+      payloadHash,
+    },
+    p_expected_version: null,
+  });
+
+  if (commandError) {
+    const code = String(commandError.code || "");
+    if (code === "42501" || code === "P4003") return response({ error: "SETTINGS_PERMISSION_DENIED" }, 403);
+    if (code === "28000") return response({ error: "ADMIN_SESSION_REQUIRED" }, 401);
+    if (code === "22023" || code === "P2201") return response({ error: "INVALID_BUSINESS_HOURS_CONFIG" }, 400);
+    if (code === "P0409" || code === "23505") return response({ error: "SETTINGS_UPDATE_CONFLICT" }, 409);
+    return response({ error: "SETTINGS_SAVE_FAILED" }, 500);
+  }
+  if (commandResult?.success !== true) return response({ error: "SETTINGS_SAVE_FAILED" }, 500);
+
   return response({ config, exists: true });
 });
