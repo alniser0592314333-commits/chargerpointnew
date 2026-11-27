@@ -31,6 +31,7 @@ const dayOrderRenumberingMigration = read("supabase/migrations/20261127250000_sa
 const durableTaskMigration = read("supabase/migrations/20261127296000_sarah_ai_durable_task_checkpoints.sql");
 const durableTaskSqlTest = read("supabase/tests/sarah_ai_durable_task_checkpoints.test.sql");
 const taskGatewayMigration = read("supabase/migrations/20261127298000_sarah_ai_task_gateway_only.sql");
+const taskGatewayRevokeMigration = read("supabase/migrations/20261127298100_revoke_legacy_sarah_task_rpcs.sql");
 const taskGatewaySqlTest = read("supabase/tests/sarah_ai_task_gateway_only.test.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
@@ -726,7 +727,7 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(source).not.toContain('caller.rpc("sarah_ai_task_checkpoint"');
     expect(source).not.toContain('admin.from("sarah_ai_tasks")');
     expect(source).toContain("AI_TASK_CHECKPOINT_WRITE_FAILED");
-    expect(taskGatewayMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_task_resume(uuid) FROM PUBLIC, anon, authenticated, service_role");
+    expect(taskGatewayRevokeMigration).toContain("REVOKE ALL ON FUNCTION public.sarah_ai_task_resume(uuid) FROM PUBLIC, anon, authenticated, service_role");
     expect(taskGatewayMigration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_task_gateway_resume(uuid,uuid,uuid,text) TO service_role");
     expect(taskGatewaySqlTest).toContain("Legacy browser-callable Sarah task RPCs must be fully revoked");
     expect(taskGatewaySqlTest).toContain("Gateway accepted a different admin without ai:use");
