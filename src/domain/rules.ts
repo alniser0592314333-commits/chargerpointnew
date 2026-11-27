@@ -147,6 +147,24 @@ export function checkDebtLimit(
 export { MIN_GOAL_DURATION_DAYS, MAX_GOAL_DURATION_DAYS, GOAL_BONUS_CAP_MINOR_PER_DEVICE, MIN_GOAL_BONUS_MINOR, randomGoalDurationDays, calculateGoalBonusCapMinor, generateGoalProposal } from "./goalProposal";
 export type { GenerateGoalProposalOptions, GeneratedGoalProposal } from "./goalProposal";
 
+export function calculateOrderProjection(
+  items: Array<{ status?: string | null }>,
+  fallback: OrderStatus = 'pending'
+): OrderStatus {
+  const active = items.filter((item) => String(item.status || '').toLowerCase() !== 'cancelled');
+  if (items.length === 0) return fallback;
+  if (active.length === 0) return 'cancelled';
+  const hasCharging = active.some((item) => String(item.status || '').toLowerCase() === 'charging');
+  const hasDelivered = active.some((item) => String(item.status || '').toLowerCase() === 'delivered');
+  if (hasCharging) return 'charging';
+  if (hasDelivered) return 'delivered';
+  return fallback;
+}
+
+/**
+ * Calculates authoritative goal progress based on qualifying delivered & recognized order items
+ */
+
 export function calculateAuthoritativeGoalProgress(
   goal: { startedAt: string; expiresAt: string },
   customerItems: Array<{
