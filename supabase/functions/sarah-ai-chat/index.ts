@@ -170,6 +170,88 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "update_customer_controls",
+      requiredPermissionGroups: [["customers:view"], ["customers:edit"]],
+      declaration: {
+        name: "update_customer_controls",
+        description: "Change a customer's debt limit, active/suspended state, or charger-fee exemption. First use lookup_customers in this same request and pass its exact code and name hint. Each protected field is separately checked against the app's live customers:debt-limit, customers:deactivate, or customers:charger-exemption permission. Debt-limit and exemption changes require the separate secure BIN confirmation; never ask for BIN in chat.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_code: { type: "STRING" },
+            name_hint: { type: "STRING" },
+            debt_limit_minor: { type: "INTEGER", description: "Optional non-negative debt limit in ILS minor units." },
+            is_active: { type: "BOOLEAN", description: "Optional active state; false suspends the customer." },
+            charger_fee_exempt: { type: "BOOLEAN", description: "Optional charger-fee exemption state." },
+          },
+          required: ["customer_code", "name_hint"],
+        },
+      },
+    },
+    {
+      name: "create_device_type",
+      requiredPermissionGroups: [["devices:manage"], ["devices:pricing"], ["devices:charger-policy"]],
+      declaration: {
+        name: "create_device_type",
+        description: "Create a device type in the app's canonical catalog. Requires device management, pricing, and charger-policy permissions. Price is in ILS minor units; use exact values supplied by the user.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            name: { type: "STRING" },
+            name_ar: { type: "STRING" },
+            name_en: { type: "STRING" },
+            icon: { type: "STRING" },
+            base_price_minor: { type: "INTEGER" },
+            charger_fee_enabled: { type: "BOOLEAN" },
+            charger_fee_applicable: { type: "BOOLEAN" },
+            sort_order: { type: "INTEGER" },
+          },
+          required: ["name", "base_price_minor"],
+        },
+      },
+    },
+    {
+      name: "update_device_type",
+      requiredPermissionGroups: [["devices:manage"]],
+      declaration: {
+        name: "update_device_type",
+        description: "Update a device type returned by get_device_catalog. Pass its exact id and version. Changing base price additionally requires devices:pricing; changing charger fee policy additionally requires devices:charger-policy.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            device_id: { type: "STRING" },
+            expected_version: { type: "INTEGER" },
+            name: { type: "STRING" },
+            name_ar: { type: "STRING" },
+            name_en: { type: "STRING" },
+            icon: { type: "STRING" },
+            base_price_minor: { type: "INTEGER" },
+            charger_fee_enabled: { type: "BOOLEAN" },
+            charger_fee_applicable: { type: "BOOLEAN" },
+            is_active: { type: "BOOLEAN" },
+            sort_order: { type: "INTEGER" },
+          },
+          required: ["device_id", "expected_version"],
+        },
+      },
+    },
+    {
+      name: "retire_device_type",
+      requiredPermissionGroups: [["devices:manage"]],
+      declaration: {
+        name: "retire_device_type",
+        description: "Retire a device type returned by get_device_catalog using its exact id and version. Existing order history is preserved; the canonical command rejects unsafe retirement.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            device_id: { type: "STRING" },
+            expected_version: { type: "INTEGER" },
+          },
+          required: ["device_id", "expected_version"],
+        },
+      },
+    },
+    {
       name: "create_customer",
       requiredPermissionGroups: [["customers:create"]],
       declaration: {
