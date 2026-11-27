@@ -81,6 +81,8 @@ VALUES
  ('00000000-0000-4000-8000-000000000002','orders:view',true),
  ('00000000-0000-4000-8000-000000000002','orders:create',true),
  ('00000000-0000-4000-8000-000000000002','orders:edit',true),
+ ('00000000-0000-4000-8000-000000000002','finance:create-payment',true),
+ ('00000000-0000-4000-8000-000000000002','finance:approve-payment',true),
  ('00000000-0000-4000-8000-000000000007','ai:use',true),
  ('00000000-0000-4000-8000-000000000007','customers:view',true),
  ('00000000-0000-4000-8000-000000000007','orders:create',true);
@@ -178,3 +180,88 @@ BEGIN
   RAISE EXCEPTION 'Unexpected canonical command type: %',p_command_type;
 END;
 $function$;
+
+
+CREATE TABLE public.qr_payment_submissions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES public.customers(id),
+  amount_minor bigint NOT NULL,
+  status text NOT NULL DEFAULT 'PENDING',
+  payment_method text NOT NULL DEFAULT 'CASH',
+  submission_source text NOT NULL DEFAULT 'ADMIN_MANUAL',
+  note text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  reviewed_at timestamptz,
+  reviewed_by uuid,
+  payment_id uuid,
+  approved_amount_minor bigint,
+  balance_before_minor bigint,
+  balance_after_minor bigint,
+  rejection_reason text
+);
+
+CREATE OR REPLACE FUNCTION public.create_admin_pending_customer_payment(
+  p_customer_id uuid,
+  p_amount_minor bigint,
+  p_note text DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE v_id uuid;
+BEGIN
+  INSERT INTO public.qr_payment_submissions(customer_id,amount_minor,status,payment_method,submission_source,note)
+  VALUES(p_customer_id,p_amount_minor,'PENDING','CASH','ADMIN_MANUAL',p_note)
+  RETURNING id INTO v_id;
+  RETURN jsonb_build_object('success',true,'id',v_id,'status','PENDING');
+END;
+$function$;
+
+CREATE OR REPLACE FUNCTION public.review_qr_payment_submission(
+  p_submission_id uuid,
+  p_action text,
+  p_bin text DEFAULT NULL,
+  p_rejection_reason text DEFAULT NULL,
+  p_approved_amount_minor bigint DEFAULT NULL
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $function$
+DECLARE
+  v_row public.qr_payment_submissions%ROWTYPE;
+  v_payment_id uuid;
+  v_before bigint := 1234;
+BEGIN
+  SELECT * INTO v_row FROM public.qr_payment_submissions WHERE id=p_submission_id FOR UPDATE;
+  IF NOT FOUND OR v_row.status<>'PENDING' THEN
+    RAISE EXCEPTION 'Payment submission is not pending' USING ERRCODE='P0001';
+  END IF;
+  IF pg_catalog.upper(p_action)='APPROVE' THEN
+    IF p_bin IS DISTINCT FROM '1234' THEN
+      RAISE EXCEPTION 'BIN_INVALID' USING ERRCODE='P0003';
+    END IF;
+    v_payment_id:=gen_random_uuid();
+    UPDATE public.qr_payment_submissions
+    SET status='APPROVED',reviewed_at=now(),payment_id=v_payment_id,
+        approved_amount_minor=p_approved_amount_minor,
+        balance_before_minor=v_before,
+        balance_after_minor=v_before+p_approved_amount_minor
+    WHERE id=p_submission_id;
+    RETURN jsonb_build_object(
+      'success',true,'status','APPROVED','payment_id',v_payment_id,
+      'balance_before_minor',v_before,'balance_after_minor',v_before+p_approved_amount_minor
+    );
+  ELSIF pg_catalog.upper(p_action)='REJECT' THEN
+    UPDATE public.qr_payment_submissions
+    SET status='REJECTED',reviewed_at=now(),rejection_reason=p_rejection_reason
+    WHERE id=p_submission_id;
+    RETURN jsonb_build_object('success',true,'status','REJECTED');
+  END IF;
+  RAISE EXCEPTION 'Unsupported review action' USING ERRCODE='22023';
+END;
+$function$;
+
