@@ -1,4 +1,10 @@
-export type SarahConversationMessage = { role: "user" | "assistant"; text: string };
+export type SarahConversationMessage = {
+  role: "user" | "assistant";
+  text: string;
+  status?: "sending" | "sent" | "offline" | "running" | "waiting_confirmation" | "failed";
+  queueId?: string;
+  statusText?: string;
+};
 export type SarahConversationSnapshot = { messages: SarahConversationMessage[]; generation: number };
 const DB = "SarahConversations"; const STORE = "conversations"; const META = "meta";
 type ClearNotice = { accountId: string; generation: number };
