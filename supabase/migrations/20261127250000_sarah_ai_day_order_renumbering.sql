@@ -82,6 +82,7 @@ DECLARE
   v_session_id uuid;
   v_day_id uuid;
   v_day_closed boolean;
+  v_day_status text;
   v_order_count integer;
   v_changes jsonb;
   v_payload jsonb;
@@ -123,15 +124,15 @@ BEGIN
   PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(v_day_id::text,1)
   );
-  SELECT d.is_closed INTO v_day_closed
+  SELECT d.is_closed,d.status INTO v_day_closed,v_day_status
   FROM public.business_days d
   WHERE d.id=v_day_id
   FOR UPDATE;
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Business day was removed while preparing renumber' USING ERRCODE='P0002';
   END IF;
-  IF v_day_closed IS TRUE THEN
-    RAISE EXCEPTION 'Closed business days cannot be renumbered' USING ERRCODE='P0409';
+  IF v_day_closed IS TRUE OR v_day_status IS DISTINCT FROM 'OPEN' THEN
+    RAISE EXCEPTION 'Only open business days can be renumbered' USING ERRCODE='P0409';
   END IF;
 
   SELECT count(*)::integer INTO v_order_count FROM public.orders o WHERE o.day_id=v_day_id;
