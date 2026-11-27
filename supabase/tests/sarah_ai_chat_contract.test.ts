@@ -95,6 +95,11 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("safeParallelReadBatch = new Set<string>([\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\", \"list_pending_payments\"])");
     expect(source).toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
     expect(source).toContain("safeDeferredMutationBatch");
+    expect(source).toContain("requestedCalls.length === 1");
+    expect(source).toContain("requestedCalls.length > 1 && mutationCalls.length === 1");
+    expect(source).toContain("create_order_with_items: [\"lookup_customers\", \"get_device_catalog\"]");
+    expect(source).toContain("add_item_to_existing_order: [\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"]");
+    expect(source).toContain("record_and_approve_customer_payment: [\"lookup_customers\"]");
     expect(source).toContain("deferredMutationPrerequisites");
     expect(source).toContain("executed: false");
     expect(source).toContain("retry_after_prerequisites: true");
