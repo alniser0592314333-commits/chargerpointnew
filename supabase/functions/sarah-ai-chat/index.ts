@@ -160,8 +160,59 @@ Deno.serve(async (req) => {
       requiredPermissionGroups: [["finance:approve-payment", "finance:create-payment"]],
       declaration: {
         name: "list_pending_payments",
-        description: "List up to twenty pending manual/Jawwal Pay customer payment submissions with customer name/code, amount, method, note, and submission time. Does not approve or modify payments.",
+        description: "List up to twenty pending manual, customer QR, and Jawwal Pay payment submissions with submission_id, customer name/code when available, amount, method, note, and submission time. Does not approve or modify payments.",
         parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "record_and_approve_customer_payment",
+      requiredPermissionGroups: [["customers:view"], ["finance:create-payment"], ["finance:approve-payment"]],
+      declaration: {
+        name: "record_and_approve_customer_payment",
+        description: "Record and approve a manual CASH payment for one customer using the app's existing pending-submission and approval workflow. First use lookup_customers and pass its exact customer_code. amount_minor is ILS minor units (100 = ₪1). This action requires the account BIN entered through the separate secure confirmation prompt; never ask for or include BIN in chat arguments.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            customer_code: { type: "STRING", description: "Exact four-character code returned by lookup_customers." },
+            name_hint: { type: "STRING", description: "Optional customer name fragment to resolve a code collision." },
+            amount_minor: { type: "INTEGER", description: "Positive amount in ILS minor units; 2000 means ₪20." },
+            note: { type: "STRING", description: "Optional payment note, up to 500 characters." },
+          },
+          required: ["customer_code", "amount_minor"],
+        },
+      },
+    },
+    {
+      name: "approve_payment_submission",
+      requiredPermissionGroups: [["finance:approve-payment"], ["finance:create-payment"]],
+      declaration: {
+        name: "approve_payment_submission",
+        description: "Approve one existing pending customer payment submission from list_pending_payments. Use its exact submission_id and approved amount. Requires the account BIN entered through the separate secure confirmation prompt; never ask for or include BIN in chat arguments.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            submission_id: { type: "STRING", description: "Exact UUID from list_pending_payments." },
+            approved_amount_minor: { type: "INTEGER", description: "Approved amount in ILS minor units, normally the exact pending amount." },
+            note: { type: "STRING", description: "Optional approval note." },
+          },
+          required: ["submission_id", "approved_amount_minor"],
+        },
+      },
+    },
+    {
+      name: "reject_payment_submission",
+      requiredPermissionGroups: [["finance:approve-payment"]],
+      declaration: {
+        name: "reject_payment_submission",
+        description: "Reject one existing pending customer payment submission from list_pending_payments. Use its exact submission_id and provide a concise rejection reason. No BIN is required for rejection.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            submission_id: { type: "STRING", description: "Exact UUID from list_pending_payments." },
+            reason: { type: "STRING", description: "Required reason for rejection." },
+          },
+          required: ["submission_id", "reason"],
+        },
       },
     },
     {
