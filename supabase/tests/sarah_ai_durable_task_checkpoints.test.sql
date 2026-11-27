@@ -45,6 +45,12 @@ BEGIN
      OR v_replay->'state'->>'phase' <> 'waiting_confirmation' THEN
     RAISE EXCEPTION 'Sarah task could not resume from the saved confirmation checkpoint: %', v_replay;
   END IF;
+  v_replay := public.sarah_ai_task_resume(v_request);
+  IF v_replay->>'status' <> 'WAITING_CONFIRMATION'
+     OR (v_replay->>'version')::bigint <> 2
+     OR v_replay->'state'->>'phase' <> 'waiting_confirmation' THEN
+    RAISE EXCEPTION 'Session-bound Sarah task resume RPC did not return the saved checkpoint: %', v_replay;
+  END IF;
 
   BEGIN
     PERFORM public.sarah_ai_task_checkpoint(v_request, 1, 'RUNNING', '{"phase":"stale"}'::jsonb);
@@ -82,7 +88,10 @@ BEGIN
      OR NOT has_function_privilege('authenticated','public.sarah_ai_task_load_or_create(uuid,text,jsonb)','EXECUTE')
      OR has_function_privilege('anon','public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb)','EXECUTE')
      OR has_function_privilege('service_role','public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb)','EXECUTE')
-     OR NOT has_function_privilege('authenticated','public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb)','EXECUTE') THEN
+     OR NOT has_function_privilege('authenticated','public.sarah_ai_task_checkpoint(uuid,bigint,text,jsonb)','EXECUTE')
+     OR has_function_privilege('anon','public.sarah_ai_task_resume(uuid)','EXECUTE')
+     OR has_function_privilege('service_role','public.sarah_ai_task_resume(uuid)','EXECUTE')
+     OR NOT has_function_privilege('authenticated','public.sarah_ai_task_resume(uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'Sarah task RPC grants are not session-bound to authenticated users';
   END IF;
   IF has_function_privilege('authenticated','public.sarah_ai_task_state_has_forbidden_keys(jsonb)','EXECUTE') THEN
