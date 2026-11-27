@@ -12,6 +12,7 @@ const quotaMigration = read("supabase/migrations/20261126170000_sarah_ai_atomic_
 const lookupMigration = read("supabase/migrations/20261126213000_sarah_ai_scoped_customer_lookup.sql");
 const profileMigration = read("supabase/migrations/20261127090000_sarah_ai_customer_profile_read.sql");
 const adminReadMigration = read("supabase/migrations/20261127100000_sarah_ai_admin_read_capabilities.sql");
+const orderActionMigration = read("supabase/migrations/20261127120000_sarah_ai_order_lifecycle_actions.sql");
 
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
@@ -205,6 +206,25 @@ describe("Sarah chat gateway security contract", () => {
     expect(chatPage).toContain("WAITING_FOR_CONFIRMATION");
     expect(inputQueue).toContain('UPLOADING: ["SENT_TO_AI", "WAITING_FOR_CONFIRMATION"');
     expect(chatPage).toContain("لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini");
+  });
+
+  it("registers delivery and cancellation only through same-session verified canonical order actions", () => {
+    expect(source).toContain('name: "deliver_order_item"');
+    expect(source).toContain('name: "cancel_order_item"');
+    expect(source).toContain('name: "cancel_order"');
+    expect(source).toContain('requiredPermissionGroups: [["orders:view"], ["orders:deliver"]]');
+    expect(source).toContain('requiredPermissionGroups: [["orders:view"], ["orders:cancel"]]');
+    expect(source).toContain('caller.rpc("sarah_ai_execute_order_action"');
+    expect(source).toContain('p_bin: actionBin');
+    expect(source).toContain('const targetKey = toolName === "cancel_order" ? "order_id" : "item_id"');
+    expect(source).toContain("get_customer_orders in this same request");
+    expect(orderActionMigration).toContain("proof.auth_session_id=v_session_id");
+    expect(orderActionMigration).toContain("target does not belong to the verified customer");
+    expect(orderActionMigration).toContain("public.execute_sync_command(");
+    expect(orderActionMigration).toContain("'DELIVER_ORDER_ITEM'");
+    expect(orderActionMigration).toContain("'CANCEL_ORDER_ITEM'");
+    expect(orderActionMigration).toContain("'CANCEL_ORDER'");
+    expect(orderActionMigration).not.toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_execute_order_action(uuid,text,text,uuid,text,text,text) TO service_role");
   });
 
   it("registers customer finance and order tools with all required live permission groups", () => {
