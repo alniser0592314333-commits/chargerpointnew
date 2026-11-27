@@ -1276,6 +1276,22 @@ jobs:
             END IF;
           END $combined_check$;
           SQL
+      - name: Create isolated database for canonical goal command dispatch
+        env:
+          PGPASSWORD: postgres
+        run: createdb -h localhost -U postgres canonical_goal_commands_test
+      - name: Prepare canonical goal command fixture
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d canonical_goal_commands_test -v ON_ERROR_STOP=1 -f supabase/tests/canonical_goal_commands_fixture.sql
+      - name: Apply canonical goal create/request command migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d canonical_goal_commands_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261127110000_canonical_goal_create_request_commands.sql
+      - name: Verify canonical goal create/request command security and idempotency
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d canonical_goal_commands_test -v ON_ERROR_STOP=1 -f supabase/tests/canonical_goal_commands.test.sql
 
   verify-username-signin-local-integration:
     name: Verify username sign-in against local Supabase Auth
