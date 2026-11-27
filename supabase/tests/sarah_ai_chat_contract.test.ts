@@ -28,6 +28,8 @@ const historicalChangeLogRedactionMigration = read("supabase/tests/fixtures/reda
 const protectedCustomerSettingsMigration = read("supabase/migrations/20261127210000_sarah_ai_customer_protected_settings.sql");
 const customerAccountStatusMigration = read("supabase/migrations/20261127240000_sarah_ai_customer_account_status.sql");
 const dayOrderRenumberingMigration = read("supabase/migrations/20261127250000_sarah_ai_day_order_renumbering.sql");
+const durableTaskMigration = read("supabase/migrations/20261127296000_sarah_ai_durable_task_checkpoints.sql");
+const durableTaskSqlTest = read("supabase/tests/sarah_ai_durable_task_checkpoints.test.sql");
 const deviceManagementMigration = read("supabase/migrations/20261127220000_sarah_ai_device_management.sql");
 const financialAdjustmentsMigration = read("supabase/migrations/20261127230000_sarah_ai_customer_financial_adjustments.sql");
 const jawwalRecipientMigration = read("supabase/migrations/20261024130000_admin_managed_jawwal_recipient.sql");
@@ -705,5 +707,62 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).not.toContain("resp.text()");
     expect(source).not.toContain("saved.error.message");
     expect(source).not.toContain("response.error.message");
+  });
+});
+
+
+describe("Sarah durable orchestration checkpoint contract", () => {
+  it("loads tasks through the authenticated actor/session RPCs and never accesses the task table directly", () => {
+    expect(source).toContain('caller.rpc("sarah_ai_task_load_or_create"');
+    expect(source).toContain('caller.rpc("sarah_ai_task_resume"');
+    expect(source).toContain('caller.rpc("sarah_ai_task_checkpoint"');
+    expect(source).toContain("taskRequestHash");
+    expect(source).toContain("taskRequestHash");
+    expect(source).not.toContain('admin.from("sarah_ai_tasks")');
+    expect(source).toContain("AI_TASK_CHECKPOINT_WRITE_FAILED");
+  });
+
+  it("checkpoints model responses, each tool result, and completed task output", () => {
+    expect(source).toContain('phase: "MODEL_RESPONSE"');
+    expect(source).toContain('phase: "EXECUTING_TOOLS"');
+    expect(source).toContain('phase: "WAITING_CONFIRMATION"');
+    expect(source).toContain('phase: "CONFIRMED_ACTION"');
+    expect(source).toContain('checkpointTask("COMPLETED"');
+    expect(source).toContain("resultsByIndex: Object.fromEntries(resultsByIndex)");
+  });
+
+  it("restores a saved candidate and skips tool calls with previously checkpointed results", () => {
+    expect(source).toContain("const savedCandidate = taskState.currentCandidate");
+    expect(source).toContain("const savedResults = taskState.resultsByIndex");
+    expect(source).toContain("executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index))");
+    expect(source).toContain("pendingCallIndex: requestedCall.index");
+    expect(source).toContain("confirmedResults");
+  });
+
+  it("does not restart a task that belongs to another or expired Auth session", () => {
+    expect(durableTaskMigration).toContain("Sarah task belongs to another or expired session");
+    expect(durableTaskMigration).toContain("auth_user_id = v_actor");
+    expect(durableTaskSqlTest).toContain("Expired Sarah task unexpectedly resumed");
+    expect(chatService).toContain("AI_TASK_CHECKPOINT_UNAVAILABLE");
+  });
+
+  it("does not persist raw user transcript text and safely recovers a task row lost before first creation", () => {
+    const stateStart = source.indexOf("const initialTaskState");
+    const stateEnd = source.indexOf("let taskLoad", stateStart);
+    expect(source.slice(stateStart, stateEnd)).not.toContain("contents");
+    expect(source).toContain("currentContentsTail");
+    expect(source).toContain('taskLoad.error?.code === "P0002"');
+  });
+
+  it("keeps secure BIN outside checkpoint state and resumes after confirmation using the same request ID", () => {
+    expect(source).toContain("const actionBin = typeof body.bin === \"string\"");
+    expect(source).toContain("requestId,");
+    expect(source).toContain("resumeTask = body.resumeTask === true || confirmationMode");
+    expect(source).toContain("p_bin: actionBin"); // BIN is used only in the live protected RPC call, never serialized into taskState.
+    expect(chatService).toContain("if (resumeTask) requestBody.resumeTask = true");
+    expect(chatPage).toContain("pendingAction.correlationId,\n        undefined,\n        undefined,\n        true,");
+    expect(chatPage).toContain("record.state !== \"QUEUED_OFFLINE\" && !record.pendingBinAction");
+    expect(chatPage).toContain('pendingBinAction: undefined');
+    expect(chatPage).toContain('transition(accountId, pendingAction.id, "READY_TO_SEND"');
   });
 });

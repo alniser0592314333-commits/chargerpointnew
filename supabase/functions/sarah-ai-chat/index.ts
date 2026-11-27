@@ -194,6 +194,73 @@ Deno.serve(async (req) => {
     return respond(403, { ok: false, error: "AI_USE_PERMISSION_REQUIRED" });
   }
 
+  // Durable task identity is bound to the authenticated user/session by the
+  // database RPCs. Continuations and secure confirmations load that same task.
+  const resumeTask = body.resumeTask === true || confirmationMode;
+  const taskHashBytes = new Uint8Array(await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(JSON.stringify({ text, history })),
+  ));
+  const taskRequestHash = Array.from(taskHashBytes).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  const initialTaskState: Record<string, unknown> = {
+    phase: "INITIAL",
+    confirmedActions: [],
+  };
+  let taskLoad = resumeTask
+    ? await caller.rpc("sarah_ai_task_resume", { p_request_id: requestId })
+    : await caller.rpc("sarah_ai_task_load_or_create", {
+        p_request_id: requestId,
+        p_request_hash: taskRequestHash,
+        p_initial_state: initialTaskState,
+      });
+  // A retry may have lost the response before the first task row was created.
+  // Only a missing-task result falls back to first-time creation; permission,
+  // session, expiry, and request-identity errors remain fail-closed.
+  if (resumeTask && taskLoad.error?.code === "P0002") {
+    taskLoad = await caller.rpc("sarah_ai_task_load_or_create", {
+      p_request_id: requestId,
+      p_request_hash: taskRequestHash,
+      p_initial_state: initialTaskState,
+    });
+  }
+  if (taskLoad.error || !taskLoad.data || typeof taskLoad.data !== "object") {
+    return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_UNAVAILABLE" });
+  }
+  const loadedTask = taskLoad.data as Record<string, unknown>;
+  let taskVersion = Number(loadedTask.version);
+  let taskStatus = safeText(loadedTask.status, 40);
+  let taskState = loadedTask.state && typeof loadedTask.state === "object" && !Array.isArray(loadedTask.state)
+    ? loadedTask.state as Record<string, unknown>
+    : initialTaskState;
+  if (!Number.isSafeInteger(taskVersion) || taskVersion < 1) {
+    return respond(409, { ok: false, error: "AI_TASK_CHECKPOINT_INVALID" });
+  }
+  const checkpointTask = async (
+    status: "RUNNING" | "WAITING_CONFIRMATION" | "WAITING_CLARIFICATION" | "COMPLETED" | "FAILED",
+    nextState: Record<string, unknown>,
+  ) => {
+    const saved = await caller.rpc("sarah_ai_task_checkpoint", {
+      p_request_id: requestId,
+      p_expected_version: taskVersion,
+      p_status: status,
+      p_state: nextState,
+    });
+    if (saved.error || !saved.data || typeof saved.data !== "object") {
+      throw new Error("AI_TASK_CHECKPOINT_WRITE_FAILED");
+    }
+    const row = saved.data as Record<string, unknown>;
+    const nextVersion = Number(row.version);
+    if (!Number.isSafeInteger(nextVersion) || nextVersion <= taskVersion) {
+      throw new Error("AI_TASK_CHECKPOINT_INVALID");
+    }
+    taskVersion = nextVersion;
+    taskStatus = status;
+    taskState = nextState;
+  };
+  if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
+    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
+  }
+
   // Server-derived, extensible capability registry. Super Admin inherits all
   // registered capabilities; ordinary admins inherit only their live effective
   // permissions. PostgreSQL independently re-checks each permission per call.
@@ -2270,6 +2337,29 @@ Deno.serve(async (req) => {
       const resultError = safeText(resultRecord.error, 80);
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
     }
+    const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
+    const savedResults = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
+      && !Array.isArray(taskState.resultsByIndex)
+      ? taskState.resultsByIndex as Record<string, unknown>
+      : {};
+    const pendingCallIndex = Number(taskState.pendingCallIndex);
+    const confirmedResults = Number.isInteger(pendingCallIndex) && pendingCallIndex >= 0
+      ? { ...savedResults, [String(pendingCallIndex)]: execution.result }
+      : savedResults;
+    const stateWithoutPendingAction = { ...taskState };
+    delete stateWithoutPendingAction.pendingAction;
+    delete stateWithoutPendingAction.pendingCallIndex;
+    await checkpointTask("RUNNING", {
+      ...stateWithoutPendingAction,
+      phase: "CONFIRMED_ACTION",
+      resultsByIndex: confirmedResults,
+      confirmedActions: [...confirmedActions, {
+        name: confirmationName,
+        actionRequestId: confirmationRequestId,
+        result: execution.result,
+        confirmedAt: new Date().toISOString(),
+      }].slice(-20),
+    });
     const money = (value: unknown) => {
       if (typeof value !== "number" || !Number.isSafeInteger(value)) return null;
       const absolute = Math.abs(value);
@@ -2338,30 +2428,50 @@ Deno.serve(async (req) => {
   };
 
   try {
-    const firstPayload: Record<string, unknown> = { ...basePayload, contents };
-    if (tools) {
-      firstPayload.tools = tools;
-      firstPayload.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
-    }
-
-    const firstResponse = await callGemini(firstPayload);
-    if (!firstResponse.ok) {
-      await firstResponse.body?.cancel().catch(() => undefined);
-      return respond(firstResponse.status === 429 ? 429 : firstResponse.status >= 500 ? 503 : 400, {
-        ok: false,
-        error: mapGeminiError(firstResponse.status),
+    const savedCandidate = taskState.currentCandidate && typeof taskState.currentCandidate === "object"
+      && !Array.isArray(taskState.currentCandidate)
+      ? taskState.currentCandidate as Record<string, unknown>
+      : null;
+    let firstCandidate: Record<string, unknown> | undefined;
+    if (savedCandidate) {
+      firstCandidate = savedCandidate;
+    } else {
+      const firstPayload: Record<string, unknown> = {
+        ...basePayload,
+        contents,
+      };
+      if (tools) {
+        firstPayload.tools = tools;
+        firstPayload.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
+      }
+      const firstResponse = await callGemini(firstPayload);
+      if (!firstResponse.ok) {
+        await firstResponse.body?.cancel().catch(() => undefined);
+        return respond(firstResponse.status === 429 ? 429 : firstResponse.status >= 500 ? 503 : 400, {
+          ok: false,
+          error: mapGeminiError(firstResponse.status),
+        });
+      }
+      const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES);
+      if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
+      let firstResult: Record<string, unknown>;
+      try {
+        firstResult = JSON.parse(new TextDecoder().decode(firstBytes)) as Record<string, unknown>;
+      } catch {
+        return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
+      }
+      firstCandidate = Array.isArray(firstResult.candidates)
+        ? firstResult.candidates[0] as Record<string, unknown> | undefined
+        : undefined;
+      await checkpointTask("RUNNING", {
+        ...taskState,
+        phase: "MODEL_RESPONSE",
+        currentCandidate: firstCandidate || null,
+        currentContentsTail: [],
+        resultsByIndex: {},
+        verifiedPrerequisiteNames: [],
       });
     }
-
-    const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES);
-    if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
-    let firstResult: Record<string, unknown>;
-    try {
-      firstResult = JSON.parse(new TextDecoder().decode(firstBytes)) as Record<string, unknown>;
-    } catch {
-      return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
-    }
-    const firstCandidate = Array.isArray(firstResult.candidates) ? firstResult.candidates[0] as Record<string, unknown> | undefined : undefined;
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
     const firstParts = Array.isArray(firstContent?.parts)
       ? firstContent.parts as Array<Record<string, unknown>>
@@ -2371,10 +2481,18 @@ Deno.serve(async (req) => {
     let answer = "";
     if (functionCalls.length > 0) {
       let currentCandidate = firstCandidate || null;
-      let currentContents = contents;
+      const savedContentsTail = Array.isArray(taskState.currentContentsTail)
+        ? taskState.currentContentsTail as Array<Record<string, unknown>>
+        : [];
+      let currentContents = [...contents, ...savedContentsTail];
+      const baseContentsLength = contents.length;
       let completed = false;
 
-      const verifiedPrerequisiteNames = new Set<string>();
+      const verifiedPrerequisiteNames = new Set<string>(
+        Array.isArray(taskState.verifiedPrerequisiteNames)
+          ? taskState.verifiedPrerequisiteNames.filter((name): name is string => typeof name === "string")
+          : [],
+      );
       while (!completed) {
         const candidateContent = currentCandidate?.content as Record<string, unknown> | undefined;
         const parts = Array.isArray(candidateContent?.parts)
@@ -2454,25 +2572,42 @@ Deno.serve(async (req) => {
           return a.index - b.index;
         });
 
-        const resultsByIndex = new Map<number, unknown>();
+        const savedResults = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
+          && !Array.isArray(taskState.resultsByIndex)
+          ? taskState.resultsByIndex as Record<string, unknown>
+          : {};
+        const resultsByIndex = new Map<number, unknown>(
+          Object.entries(savedResults)
+            .filter(([key]) => /^\d+$/.test(key))
+            .map(([key, value]) => [Number(key), value]),
+        );
+        executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
         for (const requestedCall of executionCalls) {
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
             if (execution.response.status === 428 && binProtectedCapabilityNames.has(requestedCall.name)) {
-              return respond(428, {
-                ok: false,
-                error: "BIN_REQUIRED",
-                pendingAction: {
-                  token: await createPendingActionToken(
-                    requestedCall.name,
-                    requestedCall.args,
-                    await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                  ),
-                  name: requestedCall.name,
-                  args: requestedCall.args,
-                  actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                },
+              const pendingAction = {
+                token: await createPendingActionToken(
+                  requestedCall.name,
+                  requestedCall.args,
+                  await deriveActionRequestId(requestedCall.name, requestedCall.args),
+                ),
+                name: requestedCall.name,
+                args: requestedCall.args,
+                actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
+              };
+              await checkpointTask("WAITING_CONFIRMATION", {
+                ...taskState,
+                phase: "WAITING_CONFIRMATION",
+                pendingAction,
+                pendingCallIndex: requestedCall.index,
+                currentCandidate,
+                currentContentsTail: currentContents.slice(baseContentsLength),
+                requestedCalls,
+                resultsByIndex: Object.fromEntries(resultsByIndex),
+                verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
               });
+              return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
             }
             if (execution.response.status === 401) return execution.response;
             resultsByIndex.set(requestedCall.index, {
@@ -2482,32 +2617,58 @@ Deno.serve(async (req) => {
                 : "ACTION_FAILED",
               status: execution.response.status,
             });
+            await checkpointTask("RUNNING", {
+              ...taskState,
+              phase: "EXECUTING_TOOLS",
+              currentCandidate,
+              currentContentsTail: currentContents.slice(baseContentsLength),
+              requestedCalls,
+              resultsByIndex: Object.fromEntries(resultsByIndex),
+              verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+            });
             continue;
           }
           const actionResult = execution.result && typeof execution.result === "object" && !Array.isArray(execution.result)
             ? execution.result as Record<string, unknown>
             : {};
           if (actionResult.requires_bin === true && binProtectedCapabilityNames.has(requestedCall.name)) {
-            return respond(428, {
-              ok: false,
-              error: "BIN_REQUIRED",
-              pendingAction: {
-                token: await createPendingActionToken(
-                  requestedCall.name,
-                  requestedCall.args,
-                  await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                ),
-                name: requestedCall.name,
-                args: requestedCall.args,
-                actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
-              },
+            const pendingAction = {
+              token: await createPendingActionToken(
+                requestedCall.name,
+                requestedCall.args,
+                await deriveActionRequestId(requestedCall.name, requestedCall.args),
+              ),
+              name: requestedCall.name,
+              args: requestedCall.args,
+              actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
+            };
+            await checkpointTask("WAITING_CONFIRMATION", {
+              ...taskState,
+              phase: "WAITING_CONFIRMATION",
+              pendingAction,
+              pendingCallIndex: requestedCall.index,
+              currentCandidate,
+              currentContentsTail: currentContents.slice(baseContentsLength),
+              requestedCalls,
+              resultsByIndex: Object.fromEntries(resultsByIndex),
+              verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
             });
+            return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
           }
           resultsByIndex.set(requestedCall.index, execution.result);
           const succeeded = actionResult.ok !== false && actionResult.success !== false;
           if (succeeded && readOnlyCapabilityNames.has(requestedCall.name)) {
             verifiedPrerequisiteNames.add(requestedCall.name);
           }
+          await checkpointTask("RUNNING", {
+            ...taskState,
+            phase: "EXECUTING_TOOLS",
+            currentCandidate,
+            currentContentsTail: currentContents.slice(baseContentsLength),
+            requestedCalls,
+            resultsByIndex: Object.fromEntries(resultsByIndex),
+            verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+          });
         }
 
         for (let index = 0; index < requestedCalls.length; index++) {
@@ -2572,6 +2733,13 @@ Deno.serve(async (req) => {
           ? followUpResult.candidates[0] as Record<string, unknown> | undefined || null
           : null;
         if (!currentCandidate) return respond(502, { ok: false, error: "AI_EMPTY_RESPONSE" });
+        await checkpointTask("RUNNING", {
+          ...taskState,
+          phase: "MODEL_RESPONSE",
+          currentCandidate,
+          currentContentsTail: currentContents.slice(baseContentsLength),
+          resultsByIndex: {},
+        });
       }
 
     } else {
@@ -2579,6 +2747,13 @@ Deno.serve(async (req) => {
     }
 
     if (!answer) return respond(502, { ok: false, error: "AI_EMPTY_RESPONSE" });
+    await checkpointTask("COMPLETED", {
+      phase: "COMPLETED",
+      answer,
+      modelId,
+      completedAt: new Date().toISOString(),
+      confirmedActions: Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [],
+    });
     return respond(200, { ok: true, answer, modelId });
   } catch (error) {
     return respond(503, {

@@ -67,6 +67,7 @@ export const sarahChatService = {
     bin?: string,
     clientContext?: SarahChatClientContext,
     confirmationAction?: SarahPendingBinAction,
+    resumeTask = false,
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
@@ -102,6 +103,7 @@ export const sarahChatService = {
     if (clientContext?.localSyncContext) requestBody.localSyncContext = clientContext.localSyncContext;
     if (clientContext?.localSyncActionResult) requestBody.localSyncActionResult = clientContext.localSyncActionResult;
     if (confirmationAction) requestBody.confirmationAction = { token: confirmationAction.token };
+    if (resumeTask) requestBody.resumeTask = true;
 
     let response: Response;
     try {
@@ -165,6 +167,9 @@ export const sarahChatService = {
         AI_CAPABILITY_CONFLICT: "لم يتم تنفيذ العملية بسبب تعارض أو نقص في البيانات. لم يتم تأكيد أي تغيير.",
         BIN_CONFIRMATION_INVALID: "تعذر استعادة العملية الأمنية. أعد طلب العملية من جديد.",
         BIN_CONFIRMATION_EXPIRED: "انتهت صلاحية التأكيد الأمني. أعد طلب العملية من جديد.",
+        AI_TASK_CHECKPOINT_UNAVAILABLE: "تعذر استعادة المهمة السابقة ضمن جلسة الدخول الحالية. لم أعد تنفيذ العمليات تلقائيًا؛ راجع حالة المهمة قبل إرسال طلب جديد.",
+        AI_TASK_CHECKPOINT_INVALID: "تعذر التحقق من سجل متابعة المهمة. لم يتم اعتماد أي نتيجة غير مؤكدة.",
+        AI_TASK_CHECKPOINT_WRITE_FAILED: "تعذر حفظ تقدم المهمة بأمان. يمكنك إعادة المحاولة؛ ستُراجع النتائج المحفوظة قبل تنفيذ أي خطوة مرة أخرى.",
 
         BIN_MUST_USE_SECURE_PROMPT: "لا ترسل رمز BIN داخل المحادثة. أدخله فقط في خانة التأكيد الأمني التي تظهر داخل سارة.",
       };
