@@ -250,6 +250,7 @@ BEGIN
         notes=COALESCE(p_payload->>'notes',notes),
         debt_limit_minor=COALESCE((p_payload->>'debtLimitMinor')::bigint,debt_limit_minor),
         charger_fee_exempt=COALESCE((p_payload->>'chargerFeeExempt')::boolean,charger_fee_exempt),
+        is_active=COALESCE((p_payload->>'isActive')::boolean,is_active),
         updated_at=now(),version=version+1
     WHERE id=(p_payload->>'id')::uuid;
     PERFORM public.record_canonical_change(
