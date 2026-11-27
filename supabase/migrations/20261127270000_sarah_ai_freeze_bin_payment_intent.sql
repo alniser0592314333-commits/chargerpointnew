@@ -27,6 +27,7 @@ DECLARE
   v_customer_count integer;
   v_customer_matches jsonb;
   v_request_payload jsonb;
+  v_existing_session_id uuid;
   v_existing_action text;
   v_existing_payload jsonb;
   v_saved_result jsonb;
@@ -77,11 +78,14 @@ BEGIN
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
   VALUES(auth.uid(),v_session_id,p_request_id,'record_and_approve_payment',v_request_payload)
   ON CONFLICT(auth_user_id,request_id) DO NOTHING;
-  SELECT action_name,request_payload,result
-  INTO v_existing_action,v_existing_payload,v_saved_result
+  SELECT auth_session_id,action_name,request_payload,result
+  INTO v_existing_session_id,v_existing_action,v_existing_payload,v_saved_result
   FROM public.sarah_ai_action_idempotency
   WHERE auth_user_id=auth.uid() AND request_id=p_request_id
   FOR UPDATE;
+  IF v_existing_session_id IS DISTINCT FROM v_session_id THEN
+    RAISE EXCEPTION 'Payment request belongs to another Auth session' USING ERRCODE='P0409';
+  END IF;
   IF v_existing_action IS DISTINCT FROM 'record_and_approve_payment' THEN
     RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE = 'P0409';
   END IF;
@@ -95,11 +99,8 @@ BEGIN
     RAISE EXCEPTION 'Pending request id cannot be reused with different payment input' USING ERRCODE='P0409';
   END IF;
 
-  UPDATE public.sarah_ai_action_idempotency
-  SET request_payload=v_request_payload,auth_session_id=v_session_id
-  WHERE auth_user_id=auth.uid() AND request_id=p_request_id AND result IS NULL;
   IF p_bin IS NULL OR pg_catalog.btrim(p_bin)='' THEN
-    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE = 'P4004';
+    RETURN jsonb_build_object('requires_bin',true,'status','AWAITING_BIN');
   END IF;
 
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
@@ -192,6 +193,7 @@ AS $function$
 DECLARE
   v_session_id uuid;
   v_request_payload jsonb;
+  v_existing_session_id uuid;
   v_existing_action text;
   v_existing_payload jsonb;
   v_saved_result jsonb;
@@ -237,11 +239,14 @@ BEGIN
   INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
   VALUES(auth.uid(),v_session_id,p_request_id,'review_payment_submission',v_request_payload)
   ON CONFLICT(auth_user_id,request_id) DO NOTHING;
-  SELECT action_name,request_payload,result
-  INTO v_existing_action,v_existing_payload,v_saved_result
+  SELECT auth_session_id,action_name,request_payload,result
+  INTO v_existing_session_id,v_existing_action,v_existing_payload,v_saved_result
   FROM public.sarah_ai_action_idempotency
   WHERE auth_user_id=auth.uid() AND request_id=p_request_id
   FOR UPDATE;
+  IF v_existing_session_id IS DISTINCT FROM v_session_id THEN
+    RAISE EXCEPTION 'Payment review request belongs to another Auth session' USING ERRCODE='P0409';
+  END IF;
   IF v_existing_action IS DISTINCT FROM 'review_payment_submission' THEN
     RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE='P0409';
   END IF;
@@ -255,12 +260,9 @@ BEGIN
     RAISE EXCEPTION 'Pending request id cannot be reused with different payment review input' USING ERRCODE='P0409';
   END IF;
 
-  UPDATE public.sarah_ai_action_idempotency
-  SET request_payload=v_request_payload,auth_session_id=v_session_id
-  WHERE auth_user_id=auth.uid() AND request_id=p_request_id AND result IS NULL;
   IF pg_catalog.upper(pg_catalog.btrim(p_action))='APPROVE'
      AND (p_bin IS NULL OR pg_catalog.btrim(p_bin)='') THEN
-    RAISE EXCEPTION 'BIN_REQUIRED' USING ERRCODE='P4004';
+    RETURN jsonb_build_object('requires_bin',true,'status','AWAITING_BIN');
   END IF;
 
   v_quota:=public.sarah_ai_consume_my_quota('tool_hour');
