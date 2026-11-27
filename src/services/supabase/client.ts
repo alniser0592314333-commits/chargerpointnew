@@ -11,7 +11,68 @@
  * - public_resolve_customer_qr by public_token
  */
 
+import { createClient } from '@supabase/supabase-js';
 import { config } from '../../config/env';
+
+
+/**
+ * Subscribe only to the authenticated admin's minimal permission epoch row.
+ * The notification is an invalidation hint, never an authorization decision.
+ * Database RPCs continue to validate the live session and permission before
+ * every protected operation. No polling or service-role credential is used.
+ */
+export async function subscribeToOwnAdminPermissionEpoch(
+  authUserId: string,
+  onInvalidated: (version: number) => void
+): Promise<() => void> {
+  const token = resolveAuthBearerToken();
+  if (
+    !config.supabaseUrl ||
+    !config.supabaseAnonKey ||
+    !token ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(authUserId)
+  ) {
+    return () => undefined;
+  }
+
+  const client = createClient(config.supabaseUrl, config.supabaseAnonKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: {
+      headers: { Authorization: `Bearer ${token}` },
+    },
+  });
+
+  // Ensure the Realtime websocket uses the same authenticated identity as REST.
+  await client.realtime.setAuth(token);
+  const channel = client
+    .channel(`admin-permission-epoch:${authUserId}`)
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'admin_permission_epochs',
+        filter: `auth_user_id=eq.${authUserId}`,
+      },
+      (payload) => {
+        // A late event from a previous account must never refresh the new account.
+        if (getStoredSupabaseAuthSession()?.user?.id !== authUserId) return;
+        const next = payload.new as { version?: unknown; auth_user_id?: unknown };
+        const version = Number(next?.version);
+        if (next?.auth_user_id !== authUserId || !Number.isSafeInteger(version) || version < 1) return;
+        onInvalidated(version);
+      }
+    )
+    .subscribe();
+
+  return () => {
+    void client.removeChannel(channel).catch(() => undefined);
+  };
+}
 
 export interface SupabaseClientStub {
   isConfigured: boolean;
