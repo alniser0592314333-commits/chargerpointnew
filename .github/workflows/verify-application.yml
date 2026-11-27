@@ -164,6 +164,12 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ''
         run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts src/tests/sarah_account_operation_scope.test.ts src/tests/sarah_account_switch_isolation_contract.test.ts src/tests/sarah_conversation_persistence_contract.test.ts src/tests/sarah_history_bounds.test.ts src/tests/sarah_input_queue_contract.test.ts src/tests/sarah_input_queue_multitab.test.ts
 
+      - name: Run Sarah permission epoch invalidation contracts
+        env:
+          VITE_SUPABASE_URL: ''
+          VITE_SUPABASE_ANON_KEY: ''
+        run: npx vitest run src/tests/sarah_permission_epoch_invalidation_contract.test.ts
+
       - name: Set up Deno for Edge Function validation
         uses: denoland/setup-deno@v2
         with:
