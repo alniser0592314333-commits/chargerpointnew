@@ -245,13 +245,15 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     onAccepted?: () => void,
   ) => {
     const localSyncContext = await collectLocalSyncContext();
+    let continuationContext: { localSyncContext?: SarahLocalSyncContext; localSyncActionResult?: SarahLocalSyncActionResult } =
+      localSyncContext ? { localSyncContext } : {};
     let response = await sarahChatService.send(
       message,
       accountId,
       history,
       correlationId,
       bin,
-      localSyncContext ? { localSyncContext } : undefined,
+      Object.keys(continuationContext).length ? continuationContext : undefined,
       confirmationAction,
       resumeTask,
     );
@@ -289,13 +291,14 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         };
       }
       const refreshedContext = await collectLocalSyncContext();
+      continuationContext = { localSyncContext: refreshedContext, localSyncActionResult };
       response = await sarahChatService.send(
         message,
         accountId,
         history,
         correlationId,
         bin,
-        { localSyncContext: refreshedContext, localSyncActionResult },
+        continuationContext,
         confirmationAction,
         resumeTask,
       );
@@ -312,7 +315,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         history,
         correlationId,
         undefined,
-        undefined,
+        continuationContext,
         undefined,
         true,
       );
