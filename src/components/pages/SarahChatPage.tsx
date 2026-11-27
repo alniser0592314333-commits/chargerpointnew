@@ -25,6 +25,28 @@ type PendingBinAction = {
 const accountScopeIdentity = (accountId?: string | null, authUserId?: string) =>
   accountId ? `${accountId}:${authUserId || "unverified"}` : null;
 
+const describePendingBinAction = (action?: SarahPendingBinAction) => {
+  if (!action) return "عملية تتطلب تأكيدًا أمنيًا";
+  const args = action.args;
+  const amount = typeof args.amount_minor === "number" && Number.isSafeInteger(args.amount_minor)
+    ? `₪${(args.amount_minor / 100).toFixed(2)}`
+    : "";
+  const customer = typeof args.name_hint === "string" && args.name_hint.trim()
+    ? args.name_hint.trim()
+    : typeof args.customer_code === "string" ? `رمز العميل ${args.customer_code}` : "العميل المحدد";
+  if (action.name === "record_and_approve_customer_payment") return `تسجيل واعتماد دفعة نقدية ${amount} لـ${customer}`;
+  if (action.name === "approve_payment_submission") return "اعتماد دفعة معلّقة";
+  if (action.name === "adjust_customer_finances") return `تسوية مالية (${String(args.action || "غير محددة")}) ${amount} لـ${customer}`;
+  if (action.name === "deliver_order_item") return "تسليم عنصر من طلب";
+  if (action.name === "cancel_order_item" || action.name === "cancel_order") return "إلغاء طلب أو عنصر";
+  if (action.name === "update_customer_protected_settings") return "تعديل إعدادات مالية محمية للعميل";
+  if (action.name === "set_customer_active_status") return "تغيير حالة حساب العميل";
+  if (action.name === "set_admin_permission") return "تغيير صلاحية أدمن";
+  if (action.name === "suspend_admin") return "إيقاف حساب أدمن";
+  if (action.name === "activate_admin") return "تفعيل حساب أدمن";
+  return "عملية إدارية محمية";
+};
+
 export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () => void }> = ({ session }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
@@ -448,6 +470,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       {pendingBinAction && <div className="rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
         <div className="mb-1 font-semibold">تأكيد أمني مطلوب</div>
         <p className="mb-3 text-gray-700 dark:text-gray-300">هذه العملية تتطلب رمز BIN الخاص بحسابك. أدخله هنا فقط؛ لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini.</p>
+        <p className="mb-3 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-gray-800 dark:bg-black/20 dark:text-amber-100">العملية التي ستؤكدها: {describePendingBinAction(pendingBinAction.pendingAction)}</p>
         <input
           type="password"
           inputMode="numeric"
