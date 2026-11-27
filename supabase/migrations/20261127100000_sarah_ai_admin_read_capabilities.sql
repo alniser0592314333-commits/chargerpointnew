@@ -464,6 +464,7 @@ CREATE TABLE IF NOT EXISTS public.sarah_ai_action_idempotency (
   auth_session_id uuid NOT NULL,
   request_id uuid NOT NULL,
   action_name text NOT NULL,
+  request_payload jsonb NOT NULL,
   result jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (auth_user_id, auth_session_id, request_id)
@@ -494,6 +495,8 @@ DECLARE
   v_can_open_day boolean := false;
   v_can_override_debt boolean := false;
   v_existing_action text;
+  v_existing_payload jsonb;
+  v_request_payload jsonb;
   v_saved_result jsonb;
   v_result jsonb;
   v_code text;
@@ -576,10 +579,12 @@ BEGIN
   -- One request ID can only ever represent this action in this Auth session.
   DELETE FROM public.sarah_ai_action_idempotency
   WHERE created_at <= now() - interval '30 days';
-  INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name)
-  VALUES(auth.uid(),v_session_id,p_request_id,'create_order_with_items')
+  v_request_payload:=jsonb_build_object('customer_code',v_code,'name_hint',v_name_hint,'items',p_items,'notes',p_notes);
+  INSERT INTO public.sarah_ai_action_idempotency(auth_user_id,auth_session_id,request_id,action_name,request_payload)
+  VALUES(auth.uid(),v_session_id,p_request_id,'create_order_with_items',v_request_payload)
   ON CONFLICT(auth_user_id,auth_session_id,request_id) DO NOTHING;
-  SELECT action_name,result INTO v_existing_action,v_saved_result
+  SELECT action_name,request_payload,result
+  INTO v_existing_action,v_existing_payload,v_saved_result
   FROM public.sarah_ai_action_idempotency
   WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id
   FOR UPDATE;
@@ -587,7 +592,16 @@ BEGIN
     RAISE EXCEPTION 'Request id was already used for a different action' USING ERRCODE = 'P0409';
   END IF;
   IF v_saved_result IS NOT NULL THEN
+    IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
+      RAISE EXCEPTION 'Completed request id cannot be reused with different input' USING ERRCODE = 'P0409';
+    END IF;
     RETURN v_saved_result || jsonb_build_object('idempotent_replay',true);
+  END IF;
+  -- A validation-only attempt has no side effects; the model may perform a
+  -- lookup/clarification and retry within the same user turn before commit.
+  IF v_existing_payload IS DISTINCT FROM v_request_payload THEN
+    UPDATE public.sarah_ai_action_idempotency SET request_payload=v_request_payload
+    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
   END IF;
 
   v_quota := public.sarah_ai_consume_my_quota('tool_hour');
@@ -627,13 +641,9 @@ BEGIN
 
   IF v_customer_count=0 THEN
     v_result:=jsonb_build_object('ok',false,'error','CUSTOMER_LOOKUP_REQUIRED');
-    UPDATE public.sarah_ai_action_idempotency SET result=v_result
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
     RETURN v_result;
   ELSIF v_customer_count>1 THEN
     v_result:=jsonb_build_object('ok',false,'error','CUSTOMER_NEEDS_DISAMBIGUATION','matches',v_customer_matches);
-    UPDATE public.sarah_ai_action_idempotency SET result=v_result
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
     RETURN v_result;
   END IF;
 
@@ -652,8 +662,6 @@ BEGIN
     OR (v_debt_limit=0 AND v_balance<0)
   ) THEN
     v_result:=jsonb_build_object('ok',false,'error','DEBT_LIMIT_EXCEEDED','balance_minor',v_balance,'debt_limit_minor',v_debt_limit);
-    UPDATE public.sarah_ai_action_idempotency SET result=v_result
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
     RETURN v_result;
   END IF;
 
@@ -665,29 +673,21 @@ BEGIN
     IF v_item_name='' OR pg_catalog.char_length(v_item_name)>64
        OR v_item_name ~ '[[:cntrl:]]' THEN
       v_result:=jsonb_build_object('ok',false,'error','DEVICE_NAME_INVALID','item_index',v_item_index);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
     IF pg_catalog.jsonb_typeof(COALESCE(v_item->'has_charger',v_item->'hasCharger')) IS DISTINCT FROM 'boolean' THEN
       v_result:=jsonb_build_object('ok',false,'error','ITEM_CHARGER_SELECTION_REQUIRED','item_index',v_item_index);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
     v_has_charger:=COALESCE((v_item->>'has_charger')::boolean,(v_item->>'hasCharger')::boolean,false);
     v_manual_text:=NULLIF(COALESCE(v_item->>'manual_price_minor',v_item->>'manualPriceMinor'),'');
     IF v_manual_text IS NOT NULL AND v_manual_text !~ '^[0-9]{1,12}$' THEN
       v_result:=jsonb_build_object('ok',false,'error','MANUAL_PRICE_INVALID','item_index',v_item_index);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
     v_manual_price:=v_manual_text::bigint;
     IF v_manual_price IS NOT NULL AND v_manual_price<=0 THEN
       v_result:=jsonb_build_object('ok',false,'error','MANUAL_PRICE_INVALID','item_index',v_item_index);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
 
@@ -722,8 +722,6 @@ BEGIN
         LIMIT 5
       ) suggestions;
       v_result:=jsonb_build_object('ok',false,'error','DEVICE_TYPE_NOT_FOUND','item_index',v_item_index,'suggestions',v_suggestions);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     ELSIF v_device_count>1 THEN
       SELECT COALESCE(jsonb_agg(jsonb_build_object('name',name,'name_ar',name_ar,'name_en',name_en) ORDER BY sort_order,name),'[]'::jsonb)
@@ -742,8 +740,6 @@ BEGIN
         LIMIT 5
       ) suggestions;
       v_result:=jsonb_build_object('ok',false,'error','DEVICE_TYPE_AMBIGUOUS','item_index',v_item_index,'suggestions',v_suggestions);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
 
@@ -752,14 +748,10 @@ BEGIN
       OR pg_catalog.lower(pg_catalog.btrim(COALESCE(v_device_name,''))) IN ('أخرى','اخرى','other');
     IF v_manual_price IS NOT NULL AND NOT v_is_other THEN
       v_result:=jsonb_build_object('ok',false,'error','MANUAL_PRICE_ONLY_FOR_OTHER','item_index',v_item_index);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
     IF v_is_other AND v_manual_price IS NULL THEN
       v_result:=jsonb_build_object('ok',false,'error','MANUAL_PRICE_REQUIRED_FOR_OTHER','item_index',v_item_index);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
 
@@ -785,8 +777,6 @@ BEGIN
     );
     IF NOT v_can_open_day THEN
       v_result:=jsonb_build_object('ok',false,'error','NO_OPEN_BUSINESS_DAY','business_date',v_day_date);
-      UPDATE public.sarah_ai_action_idempotency SET result=v_result
-      WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
       RETURN v_result;
     END IF;
     v_day_id:=gen_random_uuid();
@@ -799,8 +789,6 @@ BEGIN
     ),1);
   ELSIF v_day_closed IS TRUE THEN
     v_result:=jsonb_build_object('ok',false,'error','BUSINESS_DAY_CLOSED','business_date',v_day_date);
-    UPDATE public.sarah_ai_action_idempotency SET result=v_result
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
     RETURN v_result;
   END IF;
 
@@ -817,8 +805,6 @@ BEGIN
     ORDER BY o.created_at DESC,o.id
     LIMIT 1;
     v_result:=jsonb_build_object('ok',false,'error','ORDER_ALREADY_EXISTS','customer_name',v_customer_name,'order_number',v_order_number,'business_date',v_day_date);
-    UPDATE public.sarah_ai_action_idempotency SET result=v_result
-    WHERE auth_user_id=auth.uid() AND auth_session_id=v_session_id AND request_id=p_request_id;
     RETURN v_result;
   END IF;
 
