@@ -197,6 +197,17 @@ BEGIN
   FOR UPDATE;
 
   IF NOT FOUND THEN
+    -- Distinguish a genuinely never-created request from a task owned by a
+    -- previous Auth session (or an expired task). The gateway may safely
+    -- create only the former; it must never silently restart the latter.
+    IF EXISTS (
+      SELECT 1
+      FROM public.sarah_ai_tasks
+      WHERE auth_user_id = v_actor
+        AND request_id = p_request_id
+    ) THEN
+      RAISE EXCEPTION 'Sarah task belongs to another or expired session' USING ERRCODE = '28000';
+    END IF;
     RAISE EXCEPTION 'Sarah task checkpoint unavailable' USING ERRCODE = 'P0002';
   END IF;
 
