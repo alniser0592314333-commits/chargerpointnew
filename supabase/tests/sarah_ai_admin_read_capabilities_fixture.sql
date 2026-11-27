@@ -41,7 +41,8 @@ CREATE TABLE public.orders (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   delivered_at timestamptz,
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  version integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE public.order_items (
@@ -56,7 +57,8 @@ CREATE TABLE public.order_items (
   discount_snapshot_minor bigint NOT NULL DEFAULT 0,
   device_name_snapshot text,
   delivered_at timestamptz,
-  deleted_at timestamptz
+  deleted_at timestamptz,
+  version integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE public.financial_ledger (
@@ -81,6 +83,8 @@ VALUES
  ('00000000-0000-4000-8000-000000000002','orders:view',true),
  ('00000000-0000-4000-8000-000000000002','orders:create',true),
  ('00000000-0000-4000-8000-000000000002','orders:edit',true),
+ ('00000000-0000-4000-8000-000000000002','orders:deliver',true),
+ ('00000000-0000-4000-8000-000000000002','orders:cancel',true),
  ('00000000-0000-4000-8000-000000000002','finance:create-payment',true),
  ('00000000-0000-4000-8000-000000000002','finance:approve-payment',true),
  ('00000000-0000-4000-8000-000000000007','ai:use',true),
@@ -119,6 +123,14 @@ $function$;
 -- Test double for the canonical sync-command boundary. Production Sarah code
 -- calls the real execute_sync_command RPC; this fixture only records the same
 -- CREATE_ORDER/ADD_ORDER_ITEM aggregate and deliberately fails on FAIL device.
+CREATE TABLE public.sarah_ai_test_order_actions(
+  command_id uuid PRIMARY KEY,
+  command_type text NOT NULL,
+  aggregate_type text NOT NULL,
+  aggregate_id uuid NOT NULL,
+  payload jsonb NOT NULL
+);
+
 CREATE OR REPLACE FUNCTION public.execute_sync_command(
   p_command_id uuid,
   p_command_type text,
@@ -177,6 +189,15 @@ BEGIN
     );
     RETURN jsonb_build_object('result',jsonb_build_object('provisionalFinalChargeMinor',v_charge));
   END IF;
+  ELSIF p_command_type IN ('DELIVER_ORDER_ITEM','CANCEL_ORDER_ITEM','CANCEL_ORDER') THEN
+    INSERT INTO public.sarah_ai_test_order_actions(command_id,command_type,aggregate_type,aggregate_id,payload)
+    VALUES(p_command_id,p_command_type,p_aggregate_type,p_aggregate_id,p_payload);
+    RETURN jsonb_build_object(
+      'success',true,'commandType',p_command_type,
+      'result',jsonb_build_object('targetId',p_aggregate_id,'status',CASE
+        WHEN p_command_type='DELIVER_ORDER_ITEM' THEN 'DELIVERED'
+        ELSE 'CANCELLED' END)
+    );
   RAISE EXCEPTION 'Unexpected canonical command type: %',p_command_type;
 END;
 $function$;
