@@ -337,6 +337,31 @@ Deno.serve(async (req) => {
       },
     },
     {
+      name: "list_customer_history_requests",
+      requiredPermissionGroups: [["customers:edit", "customers:write", "customers:manage", "customer_accounts:manage", "customer_accounts:reset", "admin:manage"]],
+      declaration: {
+        name: "list_customer_history_requests",
+        description: "List pending requests from customers asking for temporary access to their complete order history. This is the existing admin history-access workflow; approved access lasts 24 hours.",
+        parameters: { type: "OBJECT", properties: {} },
+      },
+    },
+    {
+      name: "review_customer_history_request",
+      requiredPermissionGroups: [["customers:edit", "customers:write", "customers:manage", "customer_accounts:manage", "customer_accounts:reset", "admin:manage"]],
+      declaration: {
+        name: "review_customer_history_request",
+        description: "Approve or reject one exact pending customer history-access request returned by list_customer_history_requests. Approval grants the existing 24-hour server-side access window; rejection grants no access.",
+        parameters: {
+          type: "OBJECT",
+          properties: {
+            request_id: { type: "STRING", description: "Exact request ID returned by list_customer_history_requests." },
+            decision: { type: "STRING", enum: ["APPROVE", "REJECT"] },
+          },
+          required: ["request_id", "decision"],
+        },
+      },
+    },
+    {
       name: "get_customer_goal_proposal",
       requiredPermissionGroups: [["goals:manage"]],
       declaration: {
@@ -774,6 +799,24 @@ Deno.serve(async (req) => {
         p_action: action,
         p_bin: actionBin,
         p_reason: reason,
+      });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "list_customer_history_requests") {
+      const result = await caller.functions.invoke("customer-history", {
+        body: { action: "admin-list" },
+      });
+      toolResult = result.data;
+      toolError = result.error;
+    } else if (toolName === "review_customer_history_request") {
+      const requestId = safeText(args.request_id,36);
+      const decision = typeof args.decision === "string" ? args.decision.toUpperCase() : "";
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(requestId)
+        || !["APPROVE","REJECT"].includes(decision)) {
+        return { response: respond(400, { ok: false, error: "HISTORY_REVIEW_INPUT_INVALID" }) };
+      }
+      const result = await caller.functions.invoke("customer-history", {
+        body: { action: "admin-review", requestId, decision },
       });
       toolResult = result.data;
       toolError = result.error;
