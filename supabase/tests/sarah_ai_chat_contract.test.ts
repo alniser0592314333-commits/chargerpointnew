@@ -187,6 +187,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('caller.rpc("sarah_ai_get_device_catalog")');
     expect(deviceCatalogMigration).toContain("public._cp_assert_active_admin_permission('devices:view')");
     expect(deviceCatalogMigration).toContain("LIMIT 100");
+    expect(deviceCatalogMigration).toContain("is_active IS TRUE");
+    expect(deviceCatalogMigration).toContain("status,'ACTIVE') = 'ACTIVE'");
     expect(deviceCatalogMigration).toContain("jsonb_array_length(v_devices)");
   });
 
