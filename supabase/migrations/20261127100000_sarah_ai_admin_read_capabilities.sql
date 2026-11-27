@@ -56,7 +56,7 @@ BEGIN
   END IF;
 
   DELETE FROM public.sarah_ai_customer_lookup_proofs
-  WHERE auth_user_id = auth.uid() AND expires_at <= now();
+  WHERE expires_at <= now();
 
   INSERT INTO public.sarah_ai_customer_lookup_proofs
     (auth_user_id, auth_session_id, customer_id, customer_code, expires_at)
