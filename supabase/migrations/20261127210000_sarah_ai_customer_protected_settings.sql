@@ -87,6 +87,8 @@ BEGIN
     RAISE EXCEPTION 'Customer lookup proof is missing, expired, ambiguous, or no longer active' USING ERRCODE='42501';
   END IF;
 
+  -- Never persist the raw BIN in Sarah idempotency data; only the canonical
+  -- command receives it, and record_canonical_change redacts it before logging.
   v_request_payload:=jsonb_build_object(
     'customer_id',v_customer_id,
     'debt_limit_minor',p_debt_limit_minor,
