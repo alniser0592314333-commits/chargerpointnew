@@ -237,12 +237,29 @@ BEGIN
 
   INSERT INTO public.processed_commands(
     command_id,command_type,payload_hash,aggregate_type,aggregate_id,
-    actor_admin_id,result_payload
+    actor_admin_id,device_id,result_payload
   )
   VALUES(
     p_command_id,v_command_type,v_payload_hash,
     CASE WHEN v_command_type='CREATE_GOAL' THEN 'goals' ELSE 'goal_requests' END,
-    v_entity_uuid,v_actor_id,v_result
+    v_entity_uuid,v_actor_id,
+    CASE WHEN COALESCE(p_device_id,'') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+
+  RETURN jsonb_build_object(
+    'success',true,'commandId',p_command_id,
+    'commandType',v_command_type,'result',v_result,
+    'serverProcessedAt',now()
+  );
+END;
+$function$;
+
+REVOKE ALL ON FUNCTION public.execute_canonical_sync_command_unlocked(uuid,text,jsonb,text,text,uuid)
+  FROM PUBLIC, anon, authenticated, service_role;
+
+COMMIT;
+
+      THEN p_device_id::uuid ELSE NULL END,
+    v_result
   );
 
   RETURN jsonb_build_object(
