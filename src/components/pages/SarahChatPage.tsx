@@ -293,7 +293,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const send = async () => {
     const accountId = session?.authUserId || null;
     const clean = text.trim();
-    if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
+    if (!clean || busy || pendingBinAction || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
     if (/\bBIN\b\s*[:：]?\s*\d{4,32}/i.test(clean)) {
       setText("");
       setError("لا ترسل رمز BIN داخل المحادثة؛ أدخله فقط في خانة التأكيد الأمني.");
@@ -732,8 +732,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       </div>}
 
       <form onSubmit={(event) => { event.preventDefault(); void send(); }} className="flex items-end gap-2 rounded-2xl border border-gray-200 bg-white p-2 dark:border-[#123832] dark:bg-[#061f1c]">
-        <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || hydratedAccount !== session?.authUserId} />
-        <Button type="submit" disabled={busy || !text.trim() || hydratedAccount !== session?.authUserId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
+        <textarea rows={2} maxLength={20000} value={text} onChange={(event) => setText(event.target.value)} placeholder="اكتب لسارة..." className="max-h-40 min-h-[48px] flex-1 resize-y bg-transparent p-2 text-sm outline-none" disabled={busy || Boolean(pendingBinAction) || hydratedAccount !== session?.authUserId} />
+        <Button type="submit" disabled={busy || Boolean(pendingBinAction) || !text.trim() || hydratedAccount !== session?.authUserId} className="h-11 min-w-11"><ArrowUp className="h-4 w-4" /></Button>
       </form>
       <div className="flex flex-wrap items-center justify-center gap-3">
         <button type="button" disabled={busy || hydratedAccount !== session?.authUserId} onClick={() => void clearTranscript()} className="text-xs text-red-600 underline disabled:opacity-40">مسح سجل المحادثة</button>
