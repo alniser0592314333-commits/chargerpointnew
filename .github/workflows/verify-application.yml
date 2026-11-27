@@ -1448,6 +1448,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_admin_read_capabilities.test.sql
+      - name: Verify Sarah adds catalog items to existing orders with live permission checks
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_add_item_to_existing_order.test.sql
       - name: Verify atomic quota enforcement under concurrent requests
         env:
           PGPASSWORD: postgres
