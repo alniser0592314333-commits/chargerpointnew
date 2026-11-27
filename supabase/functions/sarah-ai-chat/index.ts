@@ -2076,6 +2076,17 @@ Deno.serve(async (req) => {
     if (execution.response) return execution.response;
     const resultRecord = execution.result && typeof execution.result === "object" && !Array.isArray(execution.result)
       ? execution.result as Record<string, unknown> : {};
+    if (resultRecord.requires_bin === true) {
+      return respond(428, {
+        ok: false,
+        error: "BIN_REQUIRED",
+        pendingAction: {
+          name: confirmationName,
+          args: confirmationArgs,
+          actionRequestId: confirmationRequestId,
+        },
+      });
+    }
     if (resultRecord.ok === false) {
       const resultError = safeText(resultRecord.error, 80);
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
@@ -2242,6 +2253,20 @@ Deno.serve(async (req) => {
               });
             }
             return execution.response;
+          }
+          const actionResult = execution.result && typeof execution.result === "object" && !Array.isArray(execution.result)
+            ? execution.result as Record<string, unknown>
+            : {};
+          if (actionResult.requires_bin === true && binProtectedCapabilityNames.has(requestedCall.name)) {
+            return respond(428, {
+              ok: false,
+              error: "BIN_REQUIRED",
+              pendingAction: {
+                name: requestedCall.name,
+                args: requestedCall.args,
+                actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
+              },
+            });
           }
           functionResponses.push({
             functionResponse: {
