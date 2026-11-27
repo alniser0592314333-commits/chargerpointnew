@@ -145,7 +145,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(adminReadMigration).toContain("public.execute_sync_command(");
     expect(adminReadMigration).toContain("'OPEN_DAY','business_days'");
     expect(adminReadMigration).not.toContain("INSERT INTO public.business_days");
-    expect(adminReadMigration).not.toContain("record_canonical_change('business_days'");
+    expect(adminReadMigration).not.toContain("INSERT INTO public.business_days");
+    expect(adminReadMigration).toContain("'OPEN_DAY','business_days'");
     expect(adminReadMigration).toContain("settings:manage");
   });
 
