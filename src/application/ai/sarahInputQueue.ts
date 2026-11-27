@@ -22,6 +22,7 @@ export interface SarahInputRecord {
   audioMimeType?: string;
   correlationId: string;
   aiRequestId?: string;
+  pendingBinAction?: { token: string; name: string; args: Record<string, unknown>; actionRequestId: string };
   resultRef?: string;
   lastErrorCode?: string;
   attempts: number;
@@ -166,7 +167,7 @@ export const sarahInputQueue = {
     } finally { db.close(); }
   },
 
-  async transition(accountId: string, id: string, next: SarahInputState, details: Partial<Pick<SarahInputRecord, "aiRequestId" | "resultRef" | "lastErrorCode">> = {}): Promise<SarahInputRecord> {
+  async transition(accountId: string, id: string, next: SarahInputState, details: Partial<Pick<SarahInputRecord, "aiRequestId" | "pendingBinAction" | "resultRef" | "lastErrorCode">> = {}): Promise<SarahInputRecord> {
     if (!accountId) throw new Error("ACCOUNT_REQUIRED");
     const db = await openDb();
     return new Promise((resolve, reject) => {
@@ -181,6 +182,7 @@ export const sarahInputQueue = {
           delete updated.text;
           delete updated.audioBlob;
           delete updated.audioMimeType;
+          delete updated.pendingBinAction;
         }
         store.put(updated);
       };

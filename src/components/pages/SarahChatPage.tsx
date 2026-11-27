@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
-import { sarahChatService } from "../../services/ai/sarahChatService";
+import { sarahChatService, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
 import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
@@ -20,9 +20,32 @@ type PendingBinAction = {
   text: string;
   historySnapshot: { role: "user" | "assistant"; text: string }[];
   baseMessages: Message[];
+  pendingAction?: SarahPendingBinAction;
 };
 const accountScopeIdentity = (accountId?: string | null, authUserId?: string) =>
   accountId ? `${accountId}:${authUserId || "unverified"}` : null;
+
+const describePendingBinAction = (action?: SarahPendingBinAction) => {
+  if (!action) return "عملية تتطلب تأكيدًا أمنيًا";
+  const args = action.args;
+  const amount = typeof args.amount_minor === "number" && Number.isSafeInteger(args.amount_minor)
+    ? `₪${(args.amount_minor / 100).toFixed(2)}`
+    : "";
+  const customer = typeof args.name_hint === "string" && args.name_hint.trim()
+    ? args.name_hint.trim()
+    : typeof args.customer_code === "string" ? `رمز العميل ${args.customer_code}` : "العميل المحدد";
+  if (action.name === "record_and_approve_customer_payment") return `تسجيل واعتماد دفعة نقدية ${amount} لـ${customer}`;
+  if (action.name === "approve_payment_submission") return "اعتماد دفعة معلّقة";
+  if (action.name === "adjust_customer_finances") return `تسوية مالية (${String(args.action || "غير محددة")}) ${amount} لـ${customer}`;
+  if (action.name === "deliver_order_item") return "تسليم عنصر من طلب";
+  if (action.name === "cancel_order_item" || action.name === "cancel_order") return "إلغاء طلب أو عنصر";
+  if (action.name === "update_customer_protected_settings") return "تعديل إعدادات مالية محمية للعميل";
+  if (action.name === "set_customer_active_status") return "تغيير حالة حساب العميل";
+  if (action.name === "set_admin_permission") return "تغيير صلاحية أدمن";
+  if (action.name === "suspend_admin") return "إيقاف حساب أدمن";
+  if (action.name === "activate_admin") return "تفعيل حساب أدمن";
+  return "عملية إدارية محمية";
+};
 
 export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () => void }> = ({ session }) => {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -121,6 +144,30 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     void refreshQueue(accountId, operation);
   }, [session?.userId, session?.authUserId]);
 
+  useEffect(() => {
+    if (!activeAccountId || hydratedAccount !== activeAccountId || pendingBinAction) return;
+    const record = pending.find((item) =>
+      item.actorAccountId === activeAccountId
+      && item.state === "WAITING_FOR_CONFIRMATION"
+      && Boolean(item.pendingBinAction)
+      && Boolean(item.text)
+    );
+    if (!record?.text || !record.pendingBinAction) return;
+    const baseMessages = messages;
+    const historySnapshot = buildSarahHistorySnapshot(baseMessages);
+    if (historySnapshot.at(-1)?.role === "user" && historySnapshot.at(-1)?.text === record.text) historySnapshot.pop();
+    setPendingBinAction({
+      id: record.id,
+      correlationId: record.correlationId,
+      text: record.text,
+      historySnapshot,
+      baseMessages,
+      pendingAction: record.pendingBinAction,
+    });
+    setBinValue("");
+    setBinError("");
+  }, [activeAccountId, hydratedAccount, pending, pendingBinAction, messages]);
+
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
   const canManageSync = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("sync:manage")));
 
@@ -157,6 +204,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     history: Message[],
     correlationId: string,
     bin?: string,
+    confirmationAction?: SarahPendingBinAction,
   ) => {
     const localSyncContext = await collectLocalSyncContext();
     let response = await sarahChatService.send(
@@ -166,6 +214,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       correlationId,
       bin,
       localSyncContext ? { localSyncContext } : undefined,
+      confirmationAction,
     );
     if (response.requiresLocalSync && response.localSyncAction === "manual_sync") {
       if (!canManageSync) throw new Error("SYNC_MANAGE_PERMISSION_REQUIRED");
@@ -208,6 +257,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         correlationId,
         bin,
         { localSyncContext: refreshedContext, localSyncActionResult },
+        confirmationAction,
       );
       if (response.requiresLocalSync) throw new Error("LOCAL_SYNC_HANDOFF_LOOP");
     }
@@ -218,6 +268,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     const accountId = session?.authUserId || null;
     const clean = text.trim();
     if (!clean || busy || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
+    if (/\bBIN\b\s*[:：]?\s*\d{4,32}/i.test(clean)) {
+      setText("");
+      setError("لا ترسل رمز BIN داخل المحادثة؛ أدخله فقط في خانة التأكيد الأمني.");
+      return;
+    }
     const operation = accountScopeRef.current.generation;
     const baseMessages = messages;
     const historySnapshot = buildSarahHistorySnapshot(baseMessages);
@@ -247,8 +302,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         if (response.requiresBin) {
           await sarahInputQueue.transition(accountId, id, "WAITING_FOR_CONFIRMATION", {
             lastErrorCode: response.binError || "BIN_REQUIRED",
+            pendingBinAction: response.pendingAction,
           });
-          setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages });
+          setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages, pendingAction: response.pendingAction });
           setBinValue("");
           setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "");
           await refreshQueue(accountId, operation);
@@ -308,11 +364,19 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       const baseMessages = messages;
       const retryHistory = buildSarahHistorySnapshot(baseMessages);
       if (retryHistory.at(-1)?.role === "user" && retryHistory.at(-1)?.text === record.text) retryHistory.pop();
-      const response = await sendWithLocalActions(record.text, accountId, retryHistory, record.correlationId);
+      const response = await sendWithLocalActions(
+        record.text,
+        accountId,
+        retryHistory,
+        record.correlationId,
+        undefined,
+        record.pendingBinAction,
+      );
       if (!isCurrent(accountId, operation)) return;
       if (response.requiresBin) {
         await sarahInputQueue.transition(accountId, record.id, "WAITING_FOR_CONFIRMATION", {
           lastErrorCode: response.binError || "BIN_REQUIRED",
+          pendingBinAction: response.pendingAction || record.pendingBinAction,
         });
         setPendingBinAction({
           id: record.id,
@@ -320,6 +384,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
           text: record.text,
           historySnapshot: retryHistory,
           baseMessages,
+          pendingAction: response.pendingAction,
         });
         setBinValue("");
         setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "");
@@ -340,6 +405,24 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       }
     } finally {
       if (isCurrent(accountId, operation)) { setBusy(false); await refreshQueue(accountId, operation); }
+    }
+  };
+
+  const cancelBinConfirmation = async () => {
+    const current = pendingBinAction;
+    const accountId = session?.authUserId || null;
+    if (!current || !accountId || busy || !isCurrent(accountId)) return;
+    try {
+      await sarahInputQueue.transition(accountId, current.id, "NEEDS_ATTENTION", {
+        lastErrorCode: "BIN_CONFIRMATION_CANCELLED",
+        pendingBinAction: undefined,
+      });
+      setPendingBinAction(null);
+      setBinValue("");
+      setBinError("");
+      await refreshQueue(accountId, accountScopeRef.current.generation);
+    } catch {
+      setBinError("تعذر إلغاء خطوة التأكيد. لم تُنفذ العملية.");
     }
   };
 
@@ -372,19 +455,21 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         accountId,
         pendingAction.historySnapshot,
         pendingAction.correlationId,
-        bin
+        bin,
+        pendingAction.pendingAction,
       );
       setBinValue("");
       if (!isCurrent(accountId, operation)) return;
       if (response.requiresBin) {
         await sarahInputQueue.transition(accountId, pendingAction.id, "WAITING_FOR_CONFIRMATION", {
           lastErrorCode: response.binError || "BIN_REQUIRED",
+          pendingBinAction: pendingAction.pendingAction,
         });
         setBinError(response.binError ? "رمز BIN غير صحيح. حاول مرة أخرى." : "أدخل رمز BIN لإكمال العملية.");
         return;
       }
 
-      await sarahInputQueue.transition(accountId, pendingAction.id, "SENT_TO_AI", { resultRef: pendingAction.correlationId });
+      await sarahInputQueue.transition(accountId, pendingAction.id, "SENT_TO_AI", { resultRef: pendingAction.correlationId, pendingBinAction: undefined });
       const alreadyHasUserMessage = pendingAction.baseMessages.some(
         (message) => message.role === "user" && message.text === pendingAction.text
       );
@@ -442,6 +527,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       {pendingBinAction && <div className="rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
         <div className="mb-1 font-semibold">تأكيد أمني مطلوب</div>
         <p className="mb-3 text-gray-700 dark:text-gray-300">هذه العملية تتطلب رمز BIN الخاص بحسابك. أدخله هنا فقط؛ لن يُضاف إلى المحادثة أو سجل الرسائل أو يُرسل إلى Gemini.</p>
+        <p className="mb-3 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-gray-800 dark:bg-black/20 dark:text-amber-100">العملية التي ستؤكدها: {describePendingBinAction(pendingBinAction.pendingAction)}</p>
         <input
           type="password"
           inputMode="numeric"
@@ -457,7 +543,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         {binError && <p className="mb-2 text-xs text-red-600 dark:text-red-300">{binError}</p>}
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={busy || !binValue.trim()} onClick={() => void submitBin()} className="rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:opacity-40">تأكيد وتنفيذ</button>
-          <button type="button" disabled={busy} onClick={() => { setPendingBinAction(null); setBinValue(""); setBinError(""); }} className="rounded-xl border border-gray-300 px-4 py-2 dark:border-[#31554f]">إلغاء</button>
+          <button type="button" disabled={busy} onClick={() => void cancelBinConfirmation()} className="rounded-xl border border-gray-300 px-4 py-2 dark:border-[#31554f]">إلغاء</button>
         </div>
       </div>}
       {pending.filter((item) => item.state !== "COMPLETED").length > 0 && <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm dark:bg-amber-950/20"><div className="mb-2 font-semibold">رسائل محفوظة / تحتاج متابعة</div>{pending.filter((item) => item.state !== "COMPLETED").map((item) => <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 border-t border-amber-200 py-2"><span className="min-w-0 flex-1 truncate">{item.text || "رسالة صوتية محفوظة"} <span className="text-xs text-gray-500">({item.state})</span></span>{(item.state === "QUEUED_OFFLINE" || item.state === "NEEDS_ATTENTION" || item.state === "WAITING_FOR_CONFIRMATION") && <button type="button" disabled={busy || !navigator.onLine} onClick={() => void retryQueued(item)} className="rounded-lg bg-amber-700 px-3 py-1 text-white disabled:opacity-40">إعادة إرسال</button>}</div>)}</div>}

@@ -1,10 +1,18 @@
 import { config } from "../../config/env";
 import { getFreshSupabaseAuthToken, getStoredSupabaseAuthSession } from "../supabase/client";
 
+export interface SarahPendingBinAction {
+  token: string;
+  name: string;
+  args: Record<string, unknown>;
+  actionRequestId: string;
+}
+
 export interface SarahChatResponse {
   answer: string;
   modelId: string;
   requiresBin?: boolean;
+  pendingAction?: SarahPendingBinAction;
   binError?: "BIN_INVALID";
   requiresLocalSync?: boolean;
   localSyncAction?: "manual_sync";
@@ -58,6 +66,7 @@ export const sarahChatService = {
     requestId?: string,
     bin?: string,
     clientContext?: SarahChatClientContext,
+    confirmationAction?: SarahPendingBinAction,
   ): Promise<SarahChatResponse> {
     const clean = text.trim();
     if (!clean) throw new Error("TEXT_REQUIRED");
@@ -92,6 +101,7 @@ export const sarahChatService = {
     if (bin) requestBody.bin = bin;
     if (clientContext?.localSyncContext) requestBody.localSyncContext = clientContext.localSyncContext;
     if (clientContext?.localSyncActionResult) requestBody.localSyncActionResult = clientContext.localSyncActionResult;
+    if (confirmationAction) requestBody.confirmationAction = { token: confirmationAction.token };
 
     let response: Response;
     try {
@@ -121,13 +131,44 @@ export const sarahChatService = {
       return { answer: "", modelId: "", requiresLocalSync: true, localSyncAction: "manual_sync" };
     }
     if (response.status === 428 && data.error === "BIN_REQUIRED") {
-      return { answer: "", modelId: "", requiresBin: true };
+      const pending = data.pendingAction && typeof data.pendingAction === "object" && !Array.isArray(data.pendingAction)
+        ? data.pendingAction as Record<string, unknown>
+        : null;
+      const pendingAction = pending
+        && typeof pending.token === "string"
+        && pending.token.length <= 12000
+        && typeof pending.name === "string"
+        && pending.args && typeof pending.args === "object" && !Array.isArray(pending.args)
+        && typeof pending.actionRequestId === "string"
+        && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(pending.actionRequestId)
+        ? {
+            token: pending.token,
+            name: pending.name,
+            args: pending.args as Record<string, unknown>,
+            actionRequestId: pending.actionRequestId,
+          }
+        : undefined;
+      return { answer: "", modelId: "", requiresBin: true, pendingAction };
     }
     if (response.status === 403 && data.error === "BIN_INVALID") {
       return { answer: "", modelId: "", requiresBin: true, binError: "BIN_INVALID" };
     }
     if (!response.ok || data.ok !== true) {
-      throw new Error(typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED");
+      const code = typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED";
+      const friendly: Record<string, string> = {
+        AI_TOOL_CALL_BATCH_NOT_SAFE: "سارة حاولت طلب أكثر من إجراء في نفس اللحظة. لم يتم تنفيذ أي تعديل؛ أعد الطلب وستنفذ الخطوات بالتتابع.",
+        AI_CAPABILITY_PERMISSION_REQUIRED: "صلاحيات حسابك الحالية لا تسمح بهذا الإجراء.",
+        AI_TOOL_UNKNOWN: "تعذر التعرّف على الإجراء المطلوب. لم يتم تنفيذ أي تغيير.",
+        AI_TOOL_CALL_NOT_ALLOWED: "الأداة المطلوبة غير متاحة لهذا الحساب. لم يتم تنفيذ أي تغيير.",
+        AI_TOOL_CALL_LIMIT_REACHED: "الطلب يحتاج خطوات أكثر من الحد المسموح. قسّم الطلب إلى خطوات أصغر.",
+        AI_CUSTOMER_NEEDS_DISAMBIGUATION: "وجدت أكثر من عميل مطابق. حدّد العميل المقصود قبل المتابعة.",
+        AI_CAPABILITY_CONFLICT: "لم يتم تنفيذ العملية بسبب تعارض أو نقص في البيانات. لم يتم تأكيد أي تغيير.",
+        BIN_CONFIRMATION_INVALID: "تعذر استعادة العملية الأمنية. أعد طلب العملية من جديد.",
+        BIN_CONFIRMATION_EXPIRED: "انتهت صلاحية التأكيد الأمني. أعد طلب العملية من جديد.",
+
+        BIN_MUST_USE_SECURE_PROMPT: "لا ترسل رمز BIN داخل المحادثة. أدخله فقط في خانة التأكيد الأمني التي تظهر داخل سارة.",
+      };
+      throw new Error(friendly[code] || code);
     }
     if (typeof data.answer !== "string" || typeof data.modelId !== "string") {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");

@@ -1444,6 +1444,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127260000_sarah_ai_add_item_to_existing_order.sql
+      - name: Apply Sarah immutable BIN payment intent migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127270000_sarah_ai_freeze_bin_payment_intent.sql
       - name: Verify Sarah session-bound reads and atomic order creation
         env:
           PGPASSWORD: postgres
