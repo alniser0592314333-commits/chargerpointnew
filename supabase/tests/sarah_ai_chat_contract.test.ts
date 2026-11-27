@@ -292,6 +292,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(financialAdjustmentsMigration).toContain("proof.auth_session_id=v_session_id");
     expect(financialAdjustmentsMigration).toContain("upper(fl.event_type)='PAYMENT'");
     expect(financialAdjustmentsMigration).toContain("Refund amount exceeds the remaining refundable payment amount");
+    expect(financialAdjustmentsMigration.indexOf("FROM public.processed_commands pc") < financialAdjustmentsMigration.indexOf("IF v_action='REFUND'")).toBe(true);
     expect(financialAdjustmentsMigration).toContain("public.execute_sync_command(");
     expect(financialAdjustmentsMigration).toContain("sarah_ai_consume_my_quota('tool_hour')");
     expect(financialAdjustmentsMigration).toContain("sarah_ai_consume_my_quota('tool_day')");
