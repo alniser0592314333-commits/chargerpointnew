@@ -130,6 +130,96 @@ END;
 $customer_profile_update$;
 RESET ROLE;
 
+-- Protected customer settings require their granular permission and separate BIN.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000001',false);
+DO $customer_protected_settings$
+DECLARE
+  v_lookup jsonb;
+  v_result jsonb;
+  v_replay jsonb;
+  v_code text;
+  v_customer_id uuid;
+  v_payload jsonb;
+BEGIN
+  v_lookup:=public.sarah_ai_lookup_customers('عميل اختبار سارة معدل');
+  IF v_lookup->>'match_count'<>'1' THEN
+    RAISE EXCEPTION 'Protected customer setting lookup failed: %',v_lookup;
+  END IF;
+  v_code:=v_lookup->'matches'->0->>'customer_code';
+  v_customer_id:=(v_lookup->'matches'->0->>'customer_id')::uuid;
+
+  BEGIN
+    PERFORM public.sarah_ai_update_customer_protected_settings(
+      '70000000-0000-4000-8000-000000000004',
+      v_code,'عميل اختبار سارة معدل',5000,true,NULL
+    );
+    RAISE EXCEPTION 'Protected customer settings unexpectedly succeeded without BIN';
+  EXCEPTION WHEN SQLSTATE 'P4004' THEN NULL;
+  END;
+
+  v_result:=public.sarah_ai_update_customer_protected_settings(
+    '70000000-0000-4000-8000-000000000004',
+    v_code,'عميل اختبار سارة معدل',5000,true,'1234'
+  );
+  IF v_result->>'ok'<>'true'
+     OR (v_result->>'debt_limit_minor')::bigint<>5000
+     OR (v_result->>'charger_fee_exempt')::boolean IS NOT TRUE THEN
+    RAISE EXCEPTION 'Protected customer settings did not apply through the canonical path: %',v_result;
+  END IF;
+
+  SELECT payload INTO v_payload
+  FROM public.change_log
+  WHERE entity_id=v_customer_id AND action='UPDATE'
+  ORDER BY sequence_id DESC LIMIT 1;
+  IF v_payload ? 'bin'
+     OR v_payload->>'debtLimitMinor'<>'5000'
+     OR v_payload->>'chargerFeeExempt'<>'true' THEN
+    RAISE EXCEPTION 'Protected customer change-log payload was not safely redacted: %',v_payload;
+  END IF;
+  IF EXISTS(
+    SELECT 1 FROM public.sarah_ai_action_idempotency
+    WHERE request_id='70000000-0000-4000-8000-000000000004'
+      AND request_payload ? 'bin'
+  ) THEN
+    RAISE EXCEPTION 'Raw BIN was persisted in Sarah action idempotency';
+  END IF;
+
+  v_replay:=public.sarah_ai_update_customer_protected_settings(
+    '70000000-0000-4000-8000-000000000004',
+    v_code,'عميل اختبار سارة معدل',5000,true,NULL
+  );
+  IF v_replay->>'idempotent_replay'<>'true' THEN
+    RAISE EXCEPTION 'Protected customer setting replay did not use the saved result: %',v_replay;
+  END IF;
+END;
+$customer_protected_settings$;
+RESET ROLE;
+
+-- An admin with customers:edit but without granular debt-limit permission is denied.
+SET ROLE authenticated;
+SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
+SELECT pg_catalog.set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false);
+SELECT pg_catalog.set_config('request.jwt.claim.session_id','20000000-0000-4000-8000-000000000002',false);
+DO $customer_protected_permission_gate$
+DECLARE v_lookup jsonb; v_code text;
+BEGIN
+  v_lookup:=public.sarah_ai_lookup_customers('عميل اختبار سارة معدل');
+  v_code:=v_lookup->'matches'->0->>'customer_code';
+  BEGIN
+    PERFORM public.sarah_ai_update_customer_protected_settings(
+      '70000000-0000-4000-8000-000000000005',
+      v_code,'عميل اختبار سارة معدل',6000,NULL,'1234'
+    );
+    RAISE EXCEPTION 'Admin without customers:debt-limit unexpectedly changed a protected setting';
+  EXCEPTION WHEN insufficient_privilege THEN NULL;
+  END;
+END;
+$customer_protected_permission_gate$;
+RESET ROLE;
+
 -- An ordinary admin without customers:create cannot create a customer through Sarah.
 SET ROLE authenticated;
 SELECT pg_catalog.set_config('request.jwt.claim.role','authenticated',false);
