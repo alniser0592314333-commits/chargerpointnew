@@ -1407,6 +1407,10 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127180000_sarah_ai_customer_profile_update.sql
+      - name: Apply canonical change-log secret redaction migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127190000_redact_sensitive_change_log_payloads.sql
       - name: Verify Sarah session-bound reads and atomic order creation
         env:
           PGPASSWORD: postgres
