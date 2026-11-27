@@ -2329,10 +2329,19 @@ Deno.serve(async (req) => {
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
     }
     const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
-    const { pendingAction: _pendingAction, ...stateWithoutPendingAction } = taskState;
+    const savedResults = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
+      && !Array.isArray(taskState.resultsByIndex)
+      ? taskState.resultsByIndex as Record<string, unknown>
+      : {};
+    const pendingCallIndex = Number(taskState.pendingCallIndex);
+    const confirmedResults = Number.isInteger(pendingCallIndex) && pendingCallIndex >= 0
+      ? { ...savedResults, [String(pendingCallIndex)]: execution.result }
+      : savedResults;
+    const { pendingAction: _pendingAction, pendingCallIndex: _pendingCallIndex, ...stateWithoutPendingAction } = taskState;
     await checkpointTask("RUNNING", {
       ...stateWithoutPendingAction,
       phase: "CONFIRMED_ACTION",
+      resultsByIndex: confirmedResults,
       confirmedActions: [...confirmedActions, {
         name: confirmationName,
         actionRequestId: confirmationRequestId,
