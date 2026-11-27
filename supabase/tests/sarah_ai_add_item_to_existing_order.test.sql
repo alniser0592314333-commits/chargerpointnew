@@ -8,7 +8,7 @@ INSERT INTO public.customers(
 ) ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO public.business_days(id,business_date,display_number,status,is_closed,opened_at,created_at,updated_at,version)
-VALUES('bbab0000-0000-4000-8000-000000000001',current_date,990,'OPEN',false,now(),now(),now(),1)
+VALUES('bbab0000-0000-4000-8000-000000000001',current_date + 5000,990,'OPEN',false,now(),now(),now(),1)
 ON CONFLICT(id) DO NOTHING;
 
 INSERT INTO public.orders(id,day_id,customer_id,display_number,status,notes)
