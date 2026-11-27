@@ -125,8 +125,8 @@ Deno.serve(async (req) => {
     ? body.bin
     : null;
 
-  const localSyncContext = sanitizeLocalSyncContext(body.localSyncContext);
-  const localSyncActionResult = sanitizeLocalSyncActionResult(body.localSyncActionResult);
+  const suppliedLocalSyncContext = sanitizeLocalSyncContext(body.localSyncContext);
+  const suppliedLocalSyncActionResult = sanitizeLocalSyncActionResult(body.localSyncActionResult);
   const history = Array.isArray(body.history) ? body.history.slice(-20) : [];
   const contents: Array<Record<string, unknown>> = [];
   let historyChars = 0;
@@ -165,6 +165,9 @@ Deno.serve(async (req) => {
   const permissions = Array.isArray(profile.permissions) ? profile.permissions : [];
   const role = String(profile.role || "").toUpperCase().replace(/\s+/g, "_");
   const isSuperAdmin = role === "SUPER_ADMIN";
+  const canManageSync = isSuperAdmin || permissions.includes("sync:manage");
+  const localSyncContext = canManageSync ? suppliedLocalSyncContext : null;
+  const localSyncActionResult = canManageSync ? suppliedLocalSyncActionResult : null;
   if (!isSuperAdmin && !permissions.includes("ai:use")) {
     return respond(403, { ok: false, error: "AI_USE_PERMISSION_REQUIRED" });
   }
