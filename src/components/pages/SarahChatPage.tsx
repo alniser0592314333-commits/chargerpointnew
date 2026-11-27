@@ -374,6 +374,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         record.correlationId,
         undefined,
         record.pendingBinAction,
+        record.state !== "QUEUED_OFFLINE" && !record.pendingBinAction,
       );
       if (!isCurrent(accountId, operation)) return;
       if (response.requiresBin) {
@@ -476,9 +477,17 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         return;
       }
 
+      // Clear the local confirmation token before continuing. If the follow-up
+      // request is interrupted, retry resumes the server task instead of asking
+      // for the same BIN a second time.
+      await sarahInputQueue.transition(accountId, pendingAction.id, "READY_TO_SEND", {
+        pendingBinAction: undefined,
+        lastErrorCode: undefined,
+      });
+      await sarahInputQueue.transition(accountId, pendingAction.id, "UPLOADING");
+
       // The confirmed protected action is complete. Continue the original
-      // multi-action task with its result in context so Sarah can execute the
-      // remaining actions and request another secure confirmation if needed.
+      // multi-action task from its server checkpoint and append the saved result.
       const originalRequestAlreadyInHistory = pendingAction.historySnapshot.some(
         (message) => message.role === "user" && message.text === pendingAction.text
       );
