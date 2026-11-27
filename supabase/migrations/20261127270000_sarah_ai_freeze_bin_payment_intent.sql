@@ -83,7 +83,7 @@ BEGIN
   FROM public.sarah_ai_action_idempotency
   WHERE auth_user_id=auth.uid() AND request_id=p_request_id
   FOR UPDATE;
-  IF v_existing_session_id IS DISTINCT FROM v_session_id THEN
+  IF v_saved_result IS NULL AND v_existing_session_id IS DISTINCT FROM v_session_id THEN
     RAISE EXCEPTION 'Payment request belongs to another Auth session' USING ERRCODE='P0409';
   END IF;
   IF v_existing_action IS DISTINCT FROM 'record_and_approve_payment' THEN
