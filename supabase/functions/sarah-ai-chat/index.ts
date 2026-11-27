@@ -2490,6 +2490,11 @@ Deno.serve(async (req) => {
         signal: controller.signal,
         body: JSON.stringify(payload),
       });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") throw error;
+      // Treat transient provider transport failures like bounded timeouts so
+      // the same checkpoint can be retried without replaying completed tools.
+      throw new DOMException("Gemini transport interrupted", "AbortError");
     } finally {
       clearTimeout(timer);
     }
@@ -2895,12 +2900,13 @@ Deno.serve(async (req) => {
       });
       return respond(504, { ok: false, error: "AI_REQUEST_TIMEOUT" });
     }
-    await checkpointTask("FAILED", {
+    // Unexpected orchestration/transport failures are retryable from the last
+    // durable checkpoint. Do not terminally fail a task after an uncertain step.
+    await checkpointTask("RUNNING", {
       ...taskState,
-      phase: "FAILED",
-      failureCode: "AI_PROVIDER_UNAVAILABLE",
-      failedAt: new Date().toISOString(),
+      phase: "INTERRUPTED",
+      lastInterruptionAt: new Date().toISOString(),
     }).catch(() => undefined);
-    return respond(503, { ok: false, error: "AI_PROVIDER_UNAVAILABLE" });
+    return respond(503, { ok: false, error: "AI_TASK_INTERRUPTED" });
   }
 });
