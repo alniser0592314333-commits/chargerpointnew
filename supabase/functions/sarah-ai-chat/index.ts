@@ -2408,36 +2408,51 @@ Deno.serve(async (req) => {
   };
 
   try {
-    const firstPayload: Record<string, unknown> = { ...basePayload, contents };
-    if (tools) {
-      firstPayload.tools = tools;
-      firstPayload.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
-    }
-
-    const firstResponse = await callGemini(firstPayload);
-    if (!firstResponse.ok) {
-      await firstResponse.body?.cancel().catch(() => undefined);
-      return respond(firstResponse.status === 429 ? 429 : firstResponse.status >= 500 ? 503 : 400, {
-        ok: false,
-        error: mapGeminiError(firstResponse.status),
+    const savedCandidate = taskState.currentCandidate && typeof taskState.currentCandidate === "object"
+      && !Array.isArray(taskState.currentCandidate)
+      ? taskState.currentCandidate as Record<string, unknown>
+      : null;
+    let firstCandidate: Record<string, unknown> | undefined;
+    if (savedCandidate) {
+      firstCandidate = savedCandidate;
+    } else {
+      const firstPayload: Record<string, unknown> = {
+        ...basePayload,
+        contents: Array.isArray(taskState.contents) ? taskState.contents as Array<Record<string, unknown>> : contents,
+      };
+      if (tools) {
+        firstPayload.tools = tools;
+        firstPayload.toolConfig = { functionCallingConfig: { mode: "AUTO" } };
+      }
+      const firstResponse = await callGemini(firstPayload);
+      if (!firstResponse.ok) {
+        await firstResponse.body?.cancel().catch(() => undefined);
+        return respond(firstResponse.status === 429 ? 429 : firstResponse.status >= 500 ? 503 : 400, {
+          ok: false,
+          error: mapGeminiError(firstResponse.status),
+        });
+      }
+      const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES);
+      if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
+      let firstResult: Record<string, unknown>;
+      try {
+        firstResult = JSON.parse(new TextDecoder().decode(firstBytes)) as Record<string, unknown>;
+      } catch {
+        return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
+      }
+      firstCandidate = Array.isArray(firstResult.candidates)
+        ? firstResult.candidates[0] as Record<string, unknown> | undefined
+        : undefined;
+      await checkpointTask("RUNNING", {
+        ...taskState,
+        phase: "MODEL_RESPONSE",
+        contents: Array.isArray(taskState.contents) ? taskState.contents : contents,
+        currentCandidate: firstCandidate || null,
+        currentContents: Array.isArray(taskState.contents) ? taskState.contents : contents,
+        resultsByIndex: {},
+        verifiedPrerequisiteNames: [],
       });
     }
-
-    const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES);
-    if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
-    let firstResult: Record<string, unknown>;
-    try {
-      firstResult = JSON.parse(new TextDecoder().decode(firstBytes)) as Record<string, unknown>;
-    } catch {
-      return respond(502, { ok: false, error: "AI_INVALID_PROVIDER_RESPONSE" });
-    }
-    const firstCandidate = Array.isArray(firstResult.candidates) ? firstResult.candidates[0] as Record<string, unknown> | undefined : undefined;
-    await checkpointTask("RUNNING", {
-      ...taskState,
-      phase: "MODEL_RESPONSE",
-      contents,
-      currentCandidate: firstCandidate || null,
-    });
     const firstContent = firstCandidate?.content as Record<string, unknown> | undefined;
     const firstParts = Array.isArray(firstContent?.parts)
       ? firstContent.parts as Array<Record<string, unknown>>
@@ -2447,10 +2462,16 @@ Deno.serve(async (req) => {
     let answer = "";
     if (functionCalls.length > 0) {
       let currentCandidate = firstCandidate || null;
-      let currentContents = contents;
+      let currentContents = Array.isArray(taskState.currentContents)
+        ? taskState.currentContents as Array<Record<string, unknown>>
+        : (Array.isArray(taskState.contents) ? taskState.contents as Array<Record<string, unknown>> : contents);
       let completed = false;
 
-      const verifiedPrerequisiteNames = new Set<string>();
+      const verifiedPrerequisiteNames = new Set<string>(
+        Array.isArray(taskState.verifiedPrerequisiteNames)
+          ? taskState.verifiedPrerequisiteNames.filter((name): name is string => typeof name === "string")
+          : [],
+      );
       while (!completed) {
         const candidateContent = currentCandidate?.content as Record<string, unknown> | undefined;
         const parts = Array.isArray(candidateContent?.parts)
@@ -2530,7 +2551,16 @@ Deno.serve(async (req) => {
           return a.index - b.index;
         });
 
-        const resultsByIndex = new Map<number, unknown>();
+        const savedResults = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
+          && !Array.isArray(taskState.resultsByIndex)
+          ? taskState.resultsByIndex as Record<string, unknown>
+          : {};
+        const resultsByIndex = new Map<number, unknown>(
+          Object.entries(savedResults)
+            .filter(([key]) => /^\\d+$/.test(key))
+            .map(([key, value]) => [Number(key), value]),
+        );
+        executionCalls = executionCalls.filter((call) => !resultsByIndex.has(call.index));
         for (const requestedCall of executionCalls) {
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
@@ -2549,6 +2579,7 @@ Deno.serve(async (req) => {
                 ...taskState,
                 phase: "WAITING_CONFIRMATION",
                 pendingAction,
+                pendingCallIndex: requestedCall.index,
                 currentCandidate,
                 currentContents,
                 requestedCalls,
@@ -2685,6 +2716,7 @@ Deno.serve(async (req) => {
           phase: "MODEL_RESPONSE",
           currentCandidate,
           currentContents,
+          resultsByIndex: {},
         });
       }
 
