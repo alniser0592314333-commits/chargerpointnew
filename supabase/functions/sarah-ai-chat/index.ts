@@ -1120,7 +1120,7 @@ Deno.serve(async (req) => {
   };
   const pendingActionSigningKey = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(serviceRoleKey),
+    new TextEncoder().encode(serviceKey),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"],
@@ -2151,7 +2151,8 @@ Deno.serve(async (req) => {
     const confirmationToken = safeText(confirmationInput.token, 12000);
     const signedAction = confirmationToken ? await verifyPendingActionToken(confirmationToken) : null;
     if (!signedAction) return respond(400, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
-    if (signedAction.expiresAt <= Date.now()) return respond(409, { ok: false, error: "BIN_CONFIRMATION_EXPIRED" });
+    const confirmationExpiresAt = signedAction.expiresAt as number;
+    if (confirmationExpiresAt <= Date.now()) return respond(409, { ok: false, error: "BIN_CONFIRMATION_EXPIRED" });
     if (signedAction.actorId !== userData.user.id || signedAction.sessionId !== authSessionId || signedAction.requestId !== requestId) {
       return respond(403, { ok: false, error: "BIN_CONFIRMATION_INVALID" });
     }
