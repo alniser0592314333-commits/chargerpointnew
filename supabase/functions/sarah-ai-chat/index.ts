@@ -1699,7 +1699,7 @@ Deno.serve(async (req) => {
             : endpointCode === "ADMIN_SESSION_REQUIRED" || endpointCode === "ADMIN_AUTH_REQUIRED" ? "28000"
             : endpointCode === "INVALID_BUSINESS_HOURS_CONFIG" || endpointCode === "INVALID_JSON" ? "22023"
             : "P0001";
-          toolError = { code: mappedCode, message: endpointCode || saved.error.message };
+          toolError = { code: mappedCode, message: endpointCode || "Business hours update failed" };
         }
       }
     } else if (
