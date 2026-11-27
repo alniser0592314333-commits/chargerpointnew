@@ -284,6 +284,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "review_customer_history_request"');
     expect(source).toContain('caller.functions.invoke("customer-history"');
     expect(source).toContain('body: { action: "admin-list" }');
+    expect(source).toContain("requests.slice(0,20)");
+    expect(source).toContain("request_id: safeText(request.id,36)");
     expect(source).toContain('body: { action: "admin-review", requestId, decision }');
     expect(source).toContain("temporary 24-hour grant");
   });
