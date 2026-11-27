@@ -63,7 +63,7 @@ BEGIN
                        WHEN v_daily_rate>=1.5 THEN 11 ELSE 15 END;
   v_duration:=v_min_duration+floor(random()*(v_max_duration-v_min_duration+1))::integer;
   v_expected:=v_daily_rate*v_duration;
-  v_target:=greatest(10,ceil(v_expected*(1.25+random()*0.30))::integer);
+  v_target:=greatest(10,ceil(v_expected*(1.25::numeric+random()::numeric*0.30::numeric))::integer);
   v_difficulty:=CASE WHEN v_expected>0 THEN v_target/v_expected ELSE 1.5 END;
   v_derived_rate:=15+least(5,greatest(0,round((v_difficulty-1)*10)::integer));
   v_rate:=least(20,greatest(15,v_derived_rate+floor(random()*3)::integer-1));
