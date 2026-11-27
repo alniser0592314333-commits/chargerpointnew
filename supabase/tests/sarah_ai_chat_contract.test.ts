@@ -144,7 +144,7 @@ describe("Sarah chat gateway security contract", () => {
     const registryStart = source.indexOf("const capabilityRegistry = [");
     const registryEnd = source.indexOf("const enabledCapabilities =", registryStart);
     const registrySection = source.slice(registryStart, registryEnd);
-    const registryNames = [...registrySection.matchAll(/^\\s+name: "([^"]+)",$/gm)].map((match) => match[1]);
+    const registryNames = [...registrySection.matchAll(/^\s+name: "([^"]+)",$/gm)].map((match) => match[1]);
     const uniqueRegistryNames = [...new Set(registryNames)];
     const executorNames = [...source.matchAll(/toolName === "([^"]+)"/g)].map((match) => match[1]);
     expect(registryNames.length).toBe(uniqueRegistryNames.length * 2);
