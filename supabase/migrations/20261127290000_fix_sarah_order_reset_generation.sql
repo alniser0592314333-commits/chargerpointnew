@@ -24,7 +24,7 @@ BEGIN
   END IF;
 
   v_old := $old$'id',v_order_id,'dayId',v_day_id,'customerId',v_customer_id,'displayNumber',v_order_number,'notes',COALESCE(pg_catalog.btrim(p_notes),'')$old$;
-  v_new := $new$'id',v_order_id,'dayId',v_day_id,'customerId',v_customer_id,'displayNumber',v_order_number,'notes',COALESCE(pg_catalog.btrim(p_notes),''), 
+  v_new := $new$'id',v_order_id,'dayId',v_day_id,'customerId',v_customer_id,'displayNumber',v_order_number,'notes',COALESCE(pg_catalog.btrim(p_notes),''),
       'resetGeneration',(SELECT COALESCE(value_number,1)
         FROM public.system_settings WHERE key='server_reset_generation')$new$;
   IF pg_catalog.strpos(v_definition, v_old) > 0 THEN
