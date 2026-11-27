@@ -1053,8 +1053,6 @@ Deno.serve(async (req) => {
     }
     config = runtimeConfig as Record<string, unknown>;
     apiKey = providerSecret;
-  
-    const generation = config.generation_config || {};
   }
 
   const generation = (config.generation_config as Record<string, unknown>) || {};
