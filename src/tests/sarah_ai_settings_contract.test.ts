@@ -61,7 +61,7 @@ describe("Sarah AI provider settings security contract", () => {
     expect(chatFunction).toContain('name: "lookup_customers"');
     expect(chatFunction).toContain('caller.rpc("sarah_ai_lookup_customers"');
     expect(chatFunction).toContain('caller.rpc("sarah_ai_get_customer_profile"');
-    expect(chatFunction).toContain("safeParallelReadPair = new Set([\"lookup_customers\", \"get_device_catalog\"])");
+    expect(chatFunction).toContain("safeParallelReadBatch = new Set<string>([\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"])");
     expect(chatFunction).toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
     expect(chatFunction).toContain("if (!confirmationMode)");
     expect(chatFunction).toContain("for (let toolStep = 0; toolStep < 4; toolStep++)");
