@@ -72,6 +72,26 @@ const mapGeminiError = (status: number) =>
     : status >= 500 ? "GEMINI_PROVIDER_UNAVAILABLE"
     : "GEMINI_REQUEST_REJECTED";
 
+type PermissionSnapshotCacheEntry = {
+  version: string;
+  permissions: string[];
+  expiresAt: number;
+};
+
+// Per-isolate optimization only. The DB epoch is checked on every request,
+// so this cache can never authorize against a version that has been revoked.
+const permissionSnapshotCache = new Map<string, PermissionSnapshotCacheEntry>();
+const PERMISSION_SNAPSHOT_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_PERMISSION_SNAPSHOT_CACHE_ENTRIES = 256;
+
+const rememberPermissionSnapshot = (authUserId: string, entry: PermissionSnapshotCacheEntry) => {
+  if (!permissionSnapshotCache.has(authUserId) && permissionSnapshotCache.size >= MAX_PERMISSION_SNAPSHOT_CACHE_ENTRIES) {
+    const oldestKey = permissionSnapshotCache.keys().next().value;
+    if (typeof oldestKey === "string") permissionSnapshotCache.delete(oldestKey);
+  }
+  permissionSnapshotCache.set(authUserId, entry);
+};
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers });
   if (req.method !== "POST") return respond(405, { ok: false, error: "METHOD_NOT_ALLOWED" });
@@ -181,13 +201,51 @@ Deno.serve(async (req) => {
   }
   if (!authSessionId) return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
 
-  const { data: profile, error: profileError } = await caller.rpc("get_current_admin_profile");
+  const cachedSnapshot = permissionSnapshotCache.get(userData.user.id) || null;
+  const usableCachedSnapshot = cachedSnapshot && cachedSnapshot.expiresAt > Date.now()
+    ? cachedSnapshot
+    : null;
+  if (cachedSnapshot && !usableCachedSnapshot) permissionSnapshotCache.delete(userData.user.id);
+
+  // This RPC validates the live account session and reads the current epoch on
+  // every request. It returns the effective permission array only on a cache
+  // miss or epoch change, avoiding a repeated permission-table scan per message.
+  const { data: profile, error: profileError } = await caller.rpc("sarah_ai_get_chat_access_context", {
+    p_cached_permissions_version: usableCachedSnapshot?.version ?? null,
+  });
   if (profileError || !profile || profile.authenticated !== true || profile.is_admin !== true
     || profile.is_active !== true || profile.auth_user_id !== userData.user.id) {
     return respond(401, { ok: false, error: "ADMIN_SESSION_UNAVAILABLE" });
   }
 
-  const permissions = Array.isArray(profile.permissions) ? profile.permissions : [];
+  const permissionVersion = safeText(profile.permissions_version, 32);
+  if (!/^\d{1,20}$/.test(permissionVersion)) {
+    return respond(503, { ok: false, error: "ADMIN_PERMISSION_CONTEXT_UNAVAILABLE" });
+  }
+
+  let permissions: string[];
+  if (profile.permissions_unchanged === true) {
+    if (!usableCachedSnapshot || usableCachedSnapshot.version !== permissionVersion) {
+      return respond(503, { ok: false, error: "ADMIN_PERMISSION_CACHE_INCONSISTENT" });
+    }
+    permissions = usableCachedSnapshot.permissions;
+    rememberPermissionSnapshot(userData.user.id, {
+      ...usableCachedSnapshot,
+      expiresAt: Date.now() + PERMISSION_SNAPSHOT_CACHE_TTL_MS,
+    });
+  } else {
+    permissions = Array.isArray(profile.permissions)
+      ? profile.permissions.filter((permission): permission is string =>
+          typeof permission === "string" && permission.length > 0 && permission.length <= 100
+        )
+      : [];
+    rememberPermissionSnapshot(userData.user.id, {
+      version: permissionVersion,
+      permissions,
+      expiresAt: Date.now() + PERMISSION_SNAPSHOT_CACHE_TTL_MS,
+    });
+  }
+
   const role = String(profile.role || "").toUpperCase().replace(/\s+/g, "_");
   const isSuperAdmin = role === "SUPER_ADMIN";
   const canManageSync = isSuperAdmin || permissions.includes("sync:manage");
