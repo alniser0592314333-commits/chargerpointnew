@@ -128,7 +128,7 @@ describe("Sarah chat gateway security contract", () => {
 
   it("derives exposed tools from a permission-filtered extensible capability registry", () => {
     expect(source).toContain("const capabilityRegistry = [");
-    expect(source).toContain("requiredPermissionGroups: [[\"customers:view\"]]");
+    expect(source).toContain("requiredPermissionGroups: [[\"customers:view\", \"customers:read\"]]");
     expect(source).toContain("const enabledCapabilities = capabilityRegistry.filter(");
     expect(source).toContain("isSuperAdmin || capability.requiredPermissionGroups.every(");
     expect(source).toContain("enabledCapabilities.map((capability) => capability.declaration)");
@@ -234,14 +234,15 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('"customers:debt-limit", "customers:charger-exemption"');
     expect(source).toContain('caller.rpc("sarah_ai_update_customer_protected_settings"');
     expect((source.match(/toolName === "update_customer_protected_settings"/g) || []).length).toBe(1);
-    expect(source).toContain("customer creation/edit/protected-setting/activation/deactivation changes");
+    expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes");
     expect(source).toContain("p_bin: actionBin");
     expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:debt-limit')");
     expect(source).toContain("use a negative value (for example -2000 for ₪20)");
     expect(protectedCustomerSettingsMigration).toContain("public._cp_assert_active_admin_permission('customers:charger-exemption')");
     expect(protectedCustomerSettingsMigration).toContain("proof.auth_session_id=v_session_id");
     expect(protectedCustomerSettingsMigration).toContain("Never persist the raw BIN in Sarah idempotency data");
-    expect(protectedCustomerSettingsMigration).toContain("USING ERRCODE='P4004'");
+    expect(protectedCustomerSettingsMigration).toContain("'bin',p_bin");
+    expect(source).toContain("Authorization BIN is required");
     expect(protectedCustomerSettingsMigration).not.toContain("'bin',p_bin\n  );");
   });
 
@@ -274,7 +275,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('caller.rpc("sarah_ai_get_device_catalog")');
     expect(deviceCatalogMigration).toContain("public._cp_assert_active_admin_permission('devices:view')");
     expect(deviceCatalogMigration).toContain("LIMIT 100");
-    expect(deviceCatalogMigration).toContain("is_active IS TRUE");
+    expect(deviceCatalogMigration).toContain("'is_active',d.is_active");
     expect(deviceCatalogMigration).toContain("status,'ACTIVE') = 'ACTIVE'");
     expect(deviceCatalogMigration).toContain("jsonb_array_length(v_devices)");
   });
@@ -347,7 +348,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('caller.rpc("rpc_fetch_custom_permissions")');
     expect(source).toContain('caller.rpc("rpc_fetch_admin_audit_logs")');
     expect(source).toContain('caller.rpc("rpc_grant_custom_permission"');
-    expect(source).toContain('caller.rpc("rpc_suspend_admin"');
+    expect(source).toContain('toolName === "suspend_admin" ? "rpc_suspend_admin" : "rpc_activate_admin"');
     expect(source).toContain('caller.rpc("rpc_activate_admin"');
     expect(source).toContain("superAdminOnly: true");
     expect(source).toContain('capability.superAdminOnly !== true || isSuperAdmin');
@@ -409,7 +410,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain("deriveActionRequestId");
     expect(source).toContain("p_bin: actionBin");
     expect(source).toContain("Never ask for BIN in chat");
-    expect(source).toContain("Only perform customer creation/edit/protected-setting changes, order creation/delivery/cancellation, payment actions, goal changes, or history-review mutations when the user explicitly asks for that action.");
+    expect(source).toContain("Only perform customer creation/edit/protected-setting/activation/deactivation changes, subordinate-admin permission/suspension/activation changes, business-hours changes, device catalog changes, customer credit/refund actions, order creation/delivery/cancellation/day renumbering, payment actions, goal changes, or history-review mutations when the user explicitly asks for that action.");
     expect(adminReadMigration).toContain("sarah_ai_record_and_approve_payment");
     expect(adminReadMigration).toContain("sarah_ai_review_payment_submission");
     expect(adminReadMigration).toContain("public.create_admin_pending_customer_payment");
@@ -472,7 +473,7 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "get_customer_financial_summary"');
     expect(source).toContain('requiredPermissionGroups: [');
     expect(source).toContain('["customers:view"]');
-    expect(source).toContain('["customers:financial-view"]');
+    expect(source).toContain('[\"customers:financial-view\", \"finance:view\", \"finances:read\"]');
     expect(source).toContain('caller.rpc(rpcName, rpcArgs)');
     expect(source).toContain('name: "get_customer_orders"');
     expect(source).toContain('requiredPermissionGroups: [["customers:view", "customers:read"], ["orders:view", "orders:read"]]');
@@ -537,7 +538,7 @@ describe("Sarah chat gateway security contract", () => {
   it("keeps model instructions aligned with all enabled capability families", () => {
     expect(source).toContain("Goal operations use only exact customer_id, goal_id, and request_id values returned by get_goals_overview");
     expect(source).toContain("Customer-history review uses only a request_id returned by list_customer_history_requests");
-    expect(source).toContain("Enabled mutations include customer creation, order creation/delivery/cancellation, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
+    expect(source).toContain("Enabled mutations include customer creation/basic profile editing/protected setting changes/account activation and deactivation, subordinate-admin permission changes/suspension/activation, business-hours changes, device catalog creation/update/retirement, customer credit adjustments/refunds, order creation/delivery/cancellation/day renumbering, payment submission actions, goal creation/review/update/cancellation, and customer-history request review");
     expect(source).not.toContain("The currently enabled mutations are create_order_with_items and the payment actions");
     expect(source).toContain("if a payment/order action returns BIN_REQUIRED");
   });
