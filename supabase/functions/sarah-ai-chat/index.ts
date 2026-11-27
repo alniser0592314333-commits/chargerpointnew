@@ -2329,8 +2329,9 @@ Deno.serve(async (req) => {
       return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
     }
     const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
+    const { pendingAction: _pendingAction, ...stateWithoutPendingAction } = taskState;
     await checkpointTask("RUNNING", {
-      ...taskState,
+      ...stateWithoutPendingAction,
       phase: "CONFIRMED_ACTION",
       confirmedActions: [...confirmedActions, {
         name: confirmationName,
@@ -2564,6 +2565,15 @@ Deno.serve(async (req) => {
                 : "ACTION_FAILED",
               status: execution.response.status,
             });
+            await checkpointTask("RUNNING", {
+              ...taskState,
+              phase: "EXECUTING_TOOLS",
+              currentCandidate,
+              currentContents,
+              requestedCalls,
+              resultsByIndex: Object.fromEntries(resultsByIndex),
+              verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+            });
             continue;
           }
           const actionResult = execution.result && typeof execution.result === "object" && !Array.isArray(execution.result)
@@ -2597,6 +2607,15 @@ Deno.serve(async (req) => {
           if (succeeded && readOnlyCapabilityNames.has(requestedCall.name)) {
             verifiedPrerequisiteNames.add(requestedCall.name);
           }
+          await checkpointTask("RUNNING", {
+            ...taskState,
+            phase: "EXECUTING_TOOLS",
+            currentCandidate,
+            currentContents,
+            requestedCalls,
+            resultsByIndex: Object.fromEntries(resultsByIndex),
+            verifiedPrerequisiteNames: [...verifiedPrerequisiteNames],
+          });
         }
 
         for (let index = 0; index < requestedCalls.length; index++) {
@@ -2661,6 +2680,12 @@ Deno.serve(async (req) => {
           ? followUpResult.candidates[0] as Record<string, unknown> | undefined || null
           : null;
         if (!currentCandidate) return respond(502, { ok: false, error: "AI_EMPTY_RESPONSE" });
+        await checkpointTask("RUNNING", {
+          ...taskState,
+          phase: "MODEL_RESPONSE",
+          currentCandidate,
+          currentContents,
+        });
       }
 
     } else {
