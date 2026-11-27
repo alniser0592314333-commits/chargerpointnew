@@ -92,9 +92,12 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('name: "lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_lookup_customers"');
     expect(source).toContain('caller.rpc("sarah_ai_get_customer_profile"');
-    expect(source).toContain("safeParallelReadBatch = new Set<string>([\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\"])");
+    expect(source).toContain("safeParallelReadBatch = new Set<string>([\"lookup_customers\", \"get_customer_orders\", \"get_device_catalog\", \"list_pending_payments\"])");
     expect(source).toContain("AI_TOOL_CALL_BATCH_NOT_SAFE");
-    expect(source).toContain("requestedCalls.length <= 3");
+    expect(source).toContain("safeDeferredMutationBatch");
+    expect(source).toContain("deferredMutationPrerequisites");
+    expect(source).toContain("executed: false");
+    expect(source).toContain("retry_after_prerequisites: true");
     expect(source).toContain("registeredCapabilityNames.has(call.name)");
     expect(source).toContain("AI_TOOL_CALL_NOT_ALLOWED");
     expect(source).toContain("AI_TOOL_CALL_LIMIT_REACHED");
