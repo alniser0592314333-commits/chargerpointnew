@@ -147,6 +147,8 @@ describe("Sarah chat gateway security contract", () => {
     expect(source).toContain('requiredPermissionGroups: [["sync:manage"]]');
     expect(source).toContain("sanitizeLocalSyncContext");
     expect(source).toContain("sanitizeLocalSyncActionResult");
+    expect(source).toContain("const localSyncContext = canManageSync ? suppliedLocalSyncContext : null;");
+    expect(source).toContain("const localSyncActionResult = canManageSync ? suppliedLocalSyncActionResult : null;");
     expect(source).toContain('caller.rpc("begin_sync_bootstrap")');
     const localSyncReadStart = source.indexOf('toolName === "get_local_sync_status"');
     const localSyncReadEnd = source.indexOf('toolName === "request_manual_sync"', localSyncReadStart);
