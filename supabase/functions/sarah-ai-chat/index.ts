@@ -2187,7 +2187,7 @@ Deno.serve(async (req) => {
       if (toolError.code === "P0409") return { response: respond(409, { ok: false, error: "AI_CAPABILITY_CONFLICT" }) };
       if (toolError.code === "P4004") return { response: respond(428, { ok: false, error: "BIN_REQUIRED" }) };
       if (toolError.code === "P0003") return { response: respond(403, { ok: false, error: "BIN_INVALID" }) };
-      if (toolError.code === "P0002" || toolError.code === "23503") return { response: respond(404, { ok: false, error: "AI_CAPABILITY_NOT_FOUND" }) };
+      if (toolError.code === "P0002" && /Reset Generation Mismatch|stale .*command rejected/i.test(toolErrorMessage)) return { response: respond(409, { ok: false, error: "AI_CAPABILITY_CONFLICT" }) };\n      if (toolError.code === "P0002" || toolError.code === "23503") return { response: respond(404, { ok: false, error: "AI_CAPABILITY_NOT_FOUND" }) };
       return { response: respond(503, { ok: false, error: "AI_CAPABILITY_UNAVAILABLE" }) };
     }
     return { result: toolResult };
