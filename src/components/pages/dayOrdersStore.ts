@@ -4580,7 +4580,7 @@ export const searchCustomersAndOrders = async (
           orderId: ord.id,
           orderNumber: ord.displayNumber,
           dayId: ord.dayId,
-          businessDate: day ? day.businessDate : ord.createdAt.split('T')[0],
+          businessDate: day?.businessDate || (typeof ord.createdAt === 'string' ? ord.createdAt.split('T')[0] : ''),
           customerId: ord.customerId,
           customerName: cust ? cust.name : 'عميل غير معروف',
           customerCode: cust ? getCustomerCode(cust) : '----',

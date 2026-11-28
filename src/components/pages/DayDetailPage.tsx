@@ -17,8 +17,8 @@ import { BusinessDayEntity } from '../../domain/models';
 import { checkDebtLimit } from '../../domain/rules';
 
 // Normalize Arabic text for practical, forgiving search (hamza variants, diacritics and Arabic digits).
-const normalizeDaySearchText = (value: string): string =>
-  value
+const normalizeDaySearchText = (value: unknown): string =>
+  String(value ?? '')
     .toLocaleLowerCase()
     .normalize('NFD')
     .replace(/[\u064B-\u065F\u0670\u0640]/g, '')
@@ -62,7 +62,11 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   const [businessDay, setBusinessDay] = useState<BusinessDayEntity | null>(null);
 
   useEffect(() => {
-    getBusinessDay(dayId).then(setBusinessDay);
+    let active = true;
+    getBusinessDay(dayId).then((day) => { if (active) setBusinessDay(day); }).catch((error) => {
+      console.error('Failed to load business day:', error);
+    });
+    return () => { active = false; };
   }, [dayId, storeVersion]);
 
   // Extract date string from businessDay or dayId as fallback
@@ -80,7 +84,14 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const loadOrders = useCallback(async (isActive: () => boolean = () => true) => {
-    const data = await getOrdersForDay(dayId, locale);
+    let data: UIDayOrderDetail[];
+    try {
+      data = await getOrdersForDay(dayId, locale);
+    } catch (error) {
+      console.error('Failed to load day orders:', error);
+      if (isActive()) setOrders([]);
+      return;
+    }
     if (!isActive()) return;
     setOrders(data);
 
@@ -92,7 +103,13 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
     // Resolve each distinct customer once per refresh, using the existing local-first
     // detail/ledger path. This is UI-only and does not change delivery or sync commands.
     const customerCodes = Array.from(new Set(data.map((order) => order.customerId)));
-    const details = await Promise.all(customerCodes.map((code) => getCustomerDetail(code)));
+    const details = await Promise.all(customerCodes.map(async (code) => {
+      try { return await getCustomerDetail(code); }
+      catch (error) {
+        console.warn('Unable to load debt warning for customer:', code, error);
+        return null;
+      }
+    }));
     if (!isActive()) return;
     const exceeded = new Set<string>();
     for (const detail of details) {
