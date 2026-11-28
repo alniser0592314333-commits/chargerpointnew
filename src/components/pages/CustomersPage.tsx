@@ -75,10 +75,12 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
     searchCustomersAndOrders(debouncedQuery)
       .then((res) => {
         if (isCurrent) {
-          setCustomers(res.customers);
-          setOrders(res.orders);
+          setCustomers(Array.isArray(res?.customers) ? res.customers : []);
+          setOrders(Array.isArray(res?.orders) ? res.orders : []);
           setIsOrderSearch(res.isOrderSearch);
-          setTotalStoreCount(res.totalStoreCustomersCount ?? res.customers.length);
+          setTotalStoreCount(Number.isFinite(Number(res?.totalStoreCustomersCount))
+            ? Number(res.totalStoreCustomersCount)
+            : (Array.isArray(res?.customers) ? res.customers.length : 0));
           setSearchError('');
           setIsLoading(false);
         }
@@ -132,10 +134,12 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
       setNewCustomerPhone('');
       // Reload current search query
       const updated = await searchCustomersAndOrders(debouncedQuery);
-      setCustomers(updated.customers);
-      setOrders(updated.orders);
+      setCustomers(Array.isArray(updated?.customers) ? updated.customers : []);
+      setOrders(Array.isArray(updated?.orders) ? updated.orders : []);
       setIsOrderSearch(updated.isOrderSearch);
-      setTotalStoreCount(updated.totalStoreCustomersCount ?? updated.customers.length);
+      setTotalStoreCount(Number.isFinite(Number(updated?.totalStoreCustomersCount))
+        ? Number(updated.totalStoreCustomersCount)
+        : (Array.isArray(updated?.customers) ? updated.customers.length : 0));
     } catch (err: any) {
       setAddErrorMessage(err?.message || t('errorOccurred'));
     } finally {
