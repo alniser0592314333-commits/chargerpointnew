@@ -160,6 +160,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       setHydratedDate(null);
       setSelectedDate(today);
     };
+    observeNewDay();
     window.addEventListener("focus", observeNewDay);
     document.addEventListener("visibilitychange", observeNewDay);
     return () => {
