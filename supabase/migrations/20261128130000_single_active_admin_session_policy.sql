@@ -136,7 +136,7 @@ BEGIN
         'last_seen_at', GREATEST(a.last_seen_at, COALESCE(s.updated_at, a.last_seen_at)),
         'client_type', a.client_type,
         'session_expires_at', a.session_expires_at,
-        'is_expired', a.session_expires_at <= now(),
+        'is_expired', a.session_expires_at <= now() OR (s.not_after IS NOT NULL AND s.not_after <= now()),
         'is_current', a.session_id = v_current_session_id,
         'revoked_at', a.revoked_at,
         'revoked_by_session_id', a.revoked_by_session_id,
