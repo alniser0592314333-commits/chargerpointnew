@@ -51,7 +51,10 @@ $old$;
     WHERE dt.is_active IS TRUE
       AND dt.deleted_at IS NULL
       AND COALESCE(dt.status,'ACTIVE')='ACTIVE'
-      AND pg_catalog.lower(pg_catalog.btrim(COALESCE(dt.name_ar,dt.name))) IN ('هاتف شاومي','هاتف شاومي')
+      AND (
+        pg_catalog.lower(pg_catalog.btrim(COALESCE(dt.name_ar,dt.name)))='هاتف شاومي'
+        OR pg_catalog.lower(pg_catalog.btrim(COALESCE(dt.name_en,'')))='xiaomi phone'
+      )
     ORDER BY dt.sort_order,dt.id
     LIMIT 1;
   END IF;
