@@ -4575,7 +4575,7 @@ export const searchCustomersAndOrders = async (
   // whether this is an order query, then project each legacy row into a safe DTO.
   const cleanOrderNum = q.startsWith('#') ? q.slice(1).trim() : q.trim();
   const normalizedOrderNum = normalizeCustomerSearchText(cleanOrderNum);
-  const isNumeric = /^\\d+$/.test(normalizedOrderNum);
+  const isNumeric = /^\d+$/.test(normalizedOrderNum);
 
   if (isNumeric) {
     const targetOrderNum = Number(normalizedOrderNum);
