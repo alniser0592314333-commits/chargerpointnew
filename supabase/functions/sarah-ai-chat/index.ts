@@ -1477,7 +1477,7 @@ Deno.serve(async (req) => {
       let phone = safeText(args.phone, 32);
       const customerName = safeText(args.customer_name, 64);
       if (!confirmedActionRequestId && customerName) {
-        if (phone || !permissions.includes("customers:view")) {
+        if (phone || (!isSuperAdmin && !permissions.includes("customers:view"))) {
           return { response: respond(403, { ok: false, error: "SMS_CUSTOMER_LOOKUP_PERMISSION_REQUIRED" }) };
         }
         const resolved = await caller.rpc("sarah_ai_resolve_sms_recipient", { p_query: customerName });
@@ -2603,7 +2603,7 @@ Deno.serve(async (req) => {
     else if (confirmationName === "set_admin_permission") confirmationAnswer = "تم تحديث صلاحية الأدمن بنجاح.";
     else if (confirmationName === "suspend_admin" || confirmationName === "activate_admin") confirmationAnswer = confirmationName === "suspend_admin" ? "تم إيقاف حساب الأدمن بنجاح." : "تم تفعيل حساب الأدمن بنجاح.";
     else if (confirmationName === "set_customer_active_status") confirmationAnswer = "تم تحديث حالة حساب العميل بنجاح.";
-    else if (confirmationName === "send_sms") confirmationAnswer = `تم إرسال الرسالة إلى نظام Android على الرقم ${safeText(resultRecord.phone, 32)}. هذا يؤكد قبول الإرسال من الهاتف، ولا يؤكد وصولها إلى المستلم.`;
+    else if (confirmationName === "send_sms") return pendingTaskResponse();
     return respond(200, { ok: true, answer: confirmationAnswer, modelId });
   }
   const gazaDateParts = new Intl.DateTimeFormat("en-US", {
