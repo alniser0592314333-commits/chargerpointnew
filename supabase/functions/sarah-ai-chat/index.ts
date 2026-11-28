@@ -1229,6 +1229,33 @@ Deno.serve(async (req) => {
       ? taskState.executedCapabilityNames.filter((name): name is string => typeof name === "string")
       : [],
   );
+  const buildPartialProgress = () => {
+    const calls = Array.isArray(taskState.requestedCalls)
+      ? taskState.requestedCalls as Array<Record<string, unknown>>
+      : [];
+    const results = taskState.resultsByIndex && typeof taskState.resultsByIndex === "object"
+      && !Array.isArray(taskState.resultsByIndex)
+      ? taskState.resultsByIndex as Record<string, unknown>
+      : {};
+    const steps = calls.map((call, index) => {
+      const name = safeText(call.name, 80);
+      if (!Object.prototype.hasOwnProperty.call(results, String(index))) {
+        return { capability: name, status: "pending" as const };
+      }
+      const value = results[String(index)];
+      const result = value && typeof value === "object" && !Array.isArray(value)
+        ? value as Record<string, unknown>
+        : {};
+      if (result.executed === false || result.retry_after_prerequisites === true) {
+        return { capability: name, status: "not_executed" as const };
+      }
+      if (result.ok === false || result.success === false || typeof result.error === "string") {
+        return { capability: name, status: "failed" as const };
+      }
+      return { capability: name, status: "succeeded" as const };
+    });
+    return { steps: steps.filter((step) => Boolean(step.capability)) };
+  };
   const taskHasProgress = taskState.phase !== "INITIAL" || taskStatus !== "RUNNING";
   if (taskHasProgress) {
     const savedExecutedNames = Array.isArray(taskState.executedCapabilityNames)
@@ -3042,6 +3069,7 @@ Deno.serve(async (req) => {
           return respond(followUpResponse.status === 429 ? 429 : followUpResponse.status >= 500 ? 503 : 400, {
             ok: false,
             error: mapGeminiError(followUpResponse.status),
+            partialProgress: buildPartialProgress(),
           });
         }
         const followUpBytes = await readBoundedResponseBody(followUpResponse, MAX_PROVIDER_RESPONSE_BYTES);
@@ -3097,7 +3125,11 @@ Deno.serve(async (req) => {
         failureCode: "AI_REQUEST_TIMEOUT",
         failedAt: new Date().toISOString(),
       });
-      return respond(504, { ok: false, error: "AI_REQUEST_TIMEOUT" });
+      return respond(504, {
+        ok: false,
+        error: "AI_REQUEST_TIMEOUT",
+        partialProgress: buildPartialProgress(),
+      });
     }
     // Unexpected orchestration/transport failures are retryable from the last
     // durable checkpoint. Do not terminally fail a task after an uncertain step.
