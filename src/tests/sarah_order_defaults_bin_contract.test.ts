@@ -7,6 +7,10 @@ describe("Sarah phone defaults and secure payment confirmation", () => {
     "supabase/migrations/20261128153000_sarah_phone_defaults_and_super_admin_payment_review.sql",
     "utf8",
   );
+  const existingOrderMigration = readFileSync(
+    "supabase/migrations/20261128160000_sarah_add_item_database_defaults.sql",
+    "utf8",
+  );
   const chatService = readFileSync("src/services/ai/sarahChatService.ts", "utf8");
   const chatPage = readFileSync("src/components/pages/SarahChatPage.tsx", "utf8");
 
@@ -23,6 +27,9 @@ describe("Sarah phone defaults and secure payment confirmation", () => {
     expect(edge).toContain("chargerInput !== undefined && chargerInput !== null && typeof chargerInput !== \"boolean\"");
     expect(migration).toContain("ITEM_CHARGER_SELECTION_INVALID");
     expect(migration).toContain("Missing or JSON null means no charger");
+    expect(existingOrderMigration).toContain("v_resolved_device_type_id := p_device_type_id");
+    expect(existingOrderMigration).toContain("Default Xiaomi phone type is unavailable");
+    expect(existingOrderMigration).toContain("COALESCE(p_has_charger,false)");
   });
 
   it("keeps BIN in the separate secure transport and never in chat history", () => {
