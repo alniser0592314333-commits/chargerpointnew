@@ -49,6 +49,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
   const [isOrderSearch, setIsOrderSearch] = useState(false);
   const [totalStoreCount, setTotalStoreCount] = useState<number>(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchError, setSearchError] = useState('');
 
   // Add Customer Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -69,6 +70,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
   useEffect(() => {
     let isCurrent = true;
     setIsLoading(true);
+    setSearchError('');
 
     searchCustomersAndOrders(debouncedQuery)
       .then((res) => {
@@ -77,12 +79,18 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
           setOrders(res.orders);
           setIsOrderSearch(res.isOrderSearch);
           setTotalStoreCount(res.totalStoreCustomersCount ?? res.customers.length);
+          setSearchError('');
           setIsLoading(false);
         }
       })
       .catch((err) => {
         if (isCurrent) {
           console.error('Failed to load customers or orders:', err);
+          setCustomers([]);
+          setOrders([]);
+          setSearchError(locale === 'ar'
+            ? 'تعذّر تحميل نتائج البحث. حاول مرة أخرى.'
+            : 'Could not load search results. Please try again.');
           setIsLoading(false);
         }
       });
@@ -90,7 +98,7 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
     return () => {
       isCurrent = false;
     };
-  }, [debouncedQuery, storeVersion]);
+  }, [debouncedQuery, storeVersion, locale]);
 
   const handleClearSearch = () => {
     setSearchQuery('');
@@ -217,6 +225,10 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
           <div className="py-12 text-center text-sm text-gray-500 dark:text-[#8eb698]">
             {t('loadingCustomers')}
           </div>
+        ) : searchError ? (
+          <div className="py-12 px-4 text-center text-sm text-red-600 dark:text-red-300">
+            {searchError}
+          </div>
         ) : isOrderSearch && orders.length > 0 ? (
           /* =======================================================
              ORDER SEARCH RESULTS (When searching by order number)
@@ -321,14 +333,14 @@ export const CustomersPage: React.FC<CustomersPageProps> = ({
                     </span>
                     <span
                       className={`text-xs font-semibold ${
-                        customer.currentBalanceMinor > 0
+                        !customer.balanceUnavailable && customer.currentBalanceMinor > 0
                           ? 'text-emerald-600 dark:text-[#4ade80]'
                           : customer.currentBalanceMinor < 0
                           ? 'text-red-600 dark:text-[#f87171]'
                           : 'text-gray-700 dark:text-[#daf1de]'
                       }`}
                     >
-                      {formatCurrency(customer.currentBalanceMinor)}
+                      {customer.balanceUnavailable ? '—' : formatCurrency(customer.currentBalanceMinor)}
                     </span>
                   </div>
 
