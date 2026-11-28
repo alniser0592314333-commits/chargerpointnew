@@ -30,8 +30,12 @@ describe("Sarah independent task and partial failure contract", () => {
     expect(page).toContain("historySnapshot,");
   });
 
-  it("does not automatically retry a previous NEEDS_ATTENTION task when a new message is sent", () => {
-    expect(page).toContain("row.state === \"NEEDS_ATTENTION\" && row.lastErrorCode === \"UPLOAD_INTERRUPTED_REQUIRES_REVIEW\"");
+  it("never auto-retries NEEDS_ATTENTION tasks when connectivity returns", () => {
+    const onlineHandler = page.slice(page.indexOf("const handleOnline = async () =>"), page.indexOf('window.addEventListener("online", handleOnline)'));
+    expect(onlineHandler).toContain('row.state === "QUEUED_OFFLINE"');
+    expect(onlineHandler).toContain('row.state === "READY_TO_SEND"');
+    expect(onlineHandler).toContain('row.state === "SENT_TO_AI"');
+    expect(onlineHandler).not.toContain('row.state === "NEEDS_ATTENTION"');
     expect(page).toContain("const retryQueued = async (record: SarahInputRecord)");
     expect(page).toContain("إعادة المحاولة");
   });
