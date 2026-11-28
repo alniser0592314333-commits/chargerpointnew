@@ -190,7 +190,7 @@ export default function App() {
   useEffect(() => {
     if (!userSession) return;
     void startNativePushNotifications('admin', () => getSupabaseAuthToken(), document.documentElement.lang);
-  }, [userSession]);
+  }, [userSession?.authUserId]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || import.meta.env.MODE !== 'admin' || !isAuthenticated) return;
@@ -401,8 +401,13 @@ export default function App() {
   // the check to avoid duplicate token refreshes from the same WebView.
   useEffect(() => {
     let checkingSession = false;
+    let pendingPermissionRefresh = false;
     const handleFocus = async () => {
-      if (!isAuthenticated || isSuspended || checkingSession) return;
+      if (!isAuthenticated || isSuspended) return;
+      if (checkingSession) {
+        pendingPermissionRefresh = true;
+        return;
+      }
       checkingSession = true;
       try {
         try {
@@ -435,18 +440,31 @@ export default function App() {
         // A transient network failure is not treated as confirmed session revocation.
       } finally {
         checkingSession = false;
+        if (pendingPermissionRefresh) {
+          pendingPermissionRefresh = false;
+          void handleFocus();
+        }
       }
     };
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void handleFocus();
     };
+    const onPermissionsInvalidated = (event: Event) => {
+      const detail = (event as CustomEvent<{ authUserId?: string }>).detail;
+      if (!detail?.authUserId || detail.authUserId !== userSession?.authUserId) return;
+      // Serialize with focus refreshes. This reloads the current server profile;
+      // it does not trust the Realtime payload as a source of permissions.
+      void handleFocus();
+    };
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('cp-admin-permissions-invalidated', onPermissionsInvalidated);
     document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('cp-admin-permissions-invalidated', onPermissionsInvalidated);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [isAuthenticated, isSuspended]);
+  }, [isAuthenticated, isSuspended, userSession?.authUserId]);
 
   // Back actions use the route's semantic parent, never the raw visit stack.
   const goBack = (fallbackPath: string) => {

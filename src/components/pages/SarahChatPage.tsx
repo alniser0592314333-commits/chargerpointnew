@@ -10,7 +10,7 @@ import { buildSarahHistorySnapshot } from "../../application/ai/sarahHistory";
 import { localDb } from "../../infrastructure/localDb/localDb";
 import { isBinRequiredOutboxCommand } from "../../infrastructure/sync/binAuthorization";
 import { globalSyncBridge } from "../../infrastructure/sync/syncBridge";
-import { invokeSupabaseRpc } from "../../services/supabase/client";
+import { invokeSupabaseRpc, subscribeToOwnAdminPermissionEpoch } from "../../services/supabase/client";
 import type { SarahLocalSyncActionResult, SarahLocalSyncContext } from "../../services/ai/sarahChatService";
 
 type Message = {
@@ -66,6 +66,39 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
   const activeAccountId = session?.authUserId || null;
   const accountScopeRef = useRef(new SarahAccountOperationScope(accountScopeIdentity(session?.userId, session?.authUserId)));
   const conversationGenerationRef = useRef(0);
+
+  // Realtime is only a fast invalidation signal for this signed-in admin.
+  // If delivery is missed, the database still checks live permissions on every
+  // protected RPC; app focus also refreshes the authoritative profile.
+  useEffect(() => {
+    const authUserId = session?.authUserId || null;
+    if (!authUserId) return;
+    let cancelled = false;
+    let unsubscribe: (() => void) | null = null;
+    void subscribeToOwnAdminPermissionEpoch(authUserId, (version) => {
+      if (cancelled || !isCurrent(authUserId)) return;
+      window.dispatchEvent(new CustomEvent("cp-admin-permissions-invalidated", {
+        detail: { authUserId, version },
+      }));
+    }).then((stop) => {
+      if (cancelled) stop();
+      else {
+        unsubscribe = stop;
+        // Refresh once on entry too: permissions may have changed while Sarah
+        // was closed, when there was intentionally no Realtime subscription.
+        window.dispatchEvent(new CustomEvent("cp-admin-permissions-invalidated", {
+          detail: { authUserId },
+        }));
+      }
+    }).catch(() => {
+      // Realtime is best-effort only. Do not poll or weaken server-side checks.
+    });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, [session?.authUserId, session?.userId]);
+
 
   // Immediately invalidate all asynchronous work from a previous account.
   useLayoutEffect(() => {
