@@ -4,6 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS public.sarah_ai_task_history (
   auth_user_id uuid NOT NULL,
+  auth_session_id uuid NOT NULL,
   request_id uuid NOT NULL,
   status text NOT NULL CHECK (status IN ('RUNNING','WAITING_CONFIRMATION','WAITING_CLARIFICATION','COMPLETED','FAILED','CANCELLED')),
   steps jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(steps) = 'array'),
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS public.sarah_ai_task_history (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL,
   completed_at timestamptz,
-  PRIMARY KEY (auth_user_id, request_id)
+  PRIMARY KEY (auth_user_id, auth_session_id, request_id)
 );
 
 CREATE INDEX IF NOT EXISTS sarah_ai_task_history_actor_created_idx
@@ -83,16 +84,16 @@ BEGIN
   FROM jsonb_array_elements(v_steps) AS step(value);
 
   INSERT INTO public.sarah_ai_task_history (
-    auth_user_id, request_id, status, steps,
+    auth_user_id, auth_session_id, request_id, status, steps,
     succeeded_count, failed_count, not_executed_count, pending_count,
     created_at, updated_at, completed_at
   ) VALUES (
-    NEW.auth_user_id, NEW.request_id, NEW.status, v_steps,
+    NEW.auth_user_id, NEW.auth_session_id, NEW.request_id, NEW.status, v_steps,
     v_succeeded, v_failed, v_not_executed, v_pending,
     NEW.created_at, NEW.updated_at,
     CASE WHEN NEW.status IN ('COMPLETED','FAILED','CANCELLED') THEN NEW.updated_at ELSE NULL END
   )
-  ON CONFLICT (auth_user_id, request_id) DO UPDATE SET
+  ON CONFLICT (auth_user_id, auth_session_id, request_id) DO UPDATE SET
     status = EXCLUDED.status,
     steps = EXCLUDED.steps,
     succeeded_count = EXCLUDED.succeeded_count,
