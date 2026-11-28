@@ -67,6 +67,29 @@ BEGIN
     AND a.session_id <> NEW.session_id
     AND a.revoked_at IS NULL;
 
+  -- Revoke the old refresh-token families and mark their Auth sessions as
+  -- ended. Their already-issued JWTs may live until exp, but the application
+  -- session guard rejects them immediately because account_sessions is revoked.
+  UPDATE auth.refresh_tokens rt
+  SET revoked = true, updated_at = now()
+  WHERE rt.user_id = NEW.user_id::text
+    AND rt.session_id IN (
+      SELECT a.session_id
+      FROM public.account_sessions a
+      WHERE a.user_id = NEW.user_id
+        AND a.session_id <> NEW.session_id
+        AND a.revoked_by_session_id = NEW.session_id
+        AND a.revocation_reason = 'new_login'
+    )
+    AND rt.revoked IS NOT TRUE;
+
+  UPDATE auth.sessions s
+  SET not_after = LEAST(COALESCE(s.not_after, now()), now()),
+      updated_at = now()
+  WHERE s.user_id = NEW.user_id
+    AND s.id <> NEW.session_id
+    AND (s.not_after IS NULL OR s.not_after > now());
+
   RETURN NEW;
 END;
 $function$;
@@ -129,7 +152,6 @@ BEGIN
       ON s.id = a.session_id
      AND s.user_id = v_user_id
     WHERE a.user_id = v_user_id
-      AND (s.not_after IS NULL OR s.not_after > now())
     ORDER BY (a.session_id = v_current_session_id) DESC, a.last_seen_at DESC
     LIMIT 25
   ) recent;
