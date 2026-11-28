@@ -148,7 +148,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         </Button>
       </div>
       <p className="text-xs leading-5 text-gray-500 dark:text-[#8eb698]">
-        {isArabic ? "تعرض الجلسة الحالية وآخر 25 جلسة معروفة، بما فيها الجلسات التي أُلغيت بعد تسجيل دخول أحدث. معلومات الجهاز للتعرّف فقط ولا تثبت هوية الشخص." : "Shows the current session and up to 25 recent sessions, including those revoked by a newer login. Device details are informational and do not identify the person."}
+        {isArabic ? "يسمح الحساب بجلسة إدارية نشطة واحدة. عند تسجيل دخول جديد من جهاز آخر تُنهى الجلسات السابقة تلقائياً. تعرض القائمة الجلسة الحالية وآخر 25 جلسة، ومعلومات الجهاز للتعرّف فقط ولا تثبت هوية الشخص." : "Only one administrator session stays active per account. A new login on another device automatically ends previous sessions. This list shows the current session and up to 25 recent entries; device details do not identify the person."}
       </p>
 
       {error && <div role="alert" className="flex items-start gap-2 border-b border-red-200 py-2 text-xs text-red-700 dark:border-red-900 dark:text-red-300"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="break-words">{error}</span></div>}
