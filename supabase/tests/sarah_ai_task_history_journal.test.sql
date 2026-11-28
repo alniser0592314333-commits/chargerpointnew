@@ -66,6 +66,20 @@ $task_history_capture$;
 
 RESET ROLE;
 
+-- Seed another actor's historical metadata. The authenticated actor's history
+-- query must never return this row, even though the gateway can read the journal.
+INSERT INTO public.sarah_ai_task_history (
+  auth_user_id, auth_session_id, request_id, status, steps,
+  succeeded_count, failed_count, not_executed_count, pending_count,
+  created_at, updated_at
+) VALUES (
+  '90000000-0000-4000-8000-000000000099',
+  '90000000-0000-4000-8000-000000000098',
+  '90000000-0000-4000-8000-000000000097',
+  'FAILED', '[{"capability":"send_sms","status":"failed"}]'::jsonb,
+  0, 1, 0, 0, now(), now()
+);
+
 -- The historical row must remain after the short-lived checkpoint is deleted.
 DELETE FROM public.sarah_ai_tasks
 WHERE auth_user_id = '10000000-0000-4000-8000-000000000001'
