@@ -1498,8 +1498,8 @@ Deno.serve(async (req) => {
         return { response: respond(400, { ok: false, error: "SMS_RECIPIENT_REQUIRED" }) };
       }
 
-      const normalizedPhone = phone.replace(/[\\s().-]/g, "");
-      if (!/^\\+?[0-9]{7,18}$/.test(normalizedPhone)) {
+      const normalizedPhone = phone.replace(/[\s().-]/g, "");
+      if (!/^\+?[0-9]{7,18}$/.test(normalizedPhone)) {
         return { response: respond(400, { ok: false, error: "SMS_PHONE_INVALID" }) };
       }
 
