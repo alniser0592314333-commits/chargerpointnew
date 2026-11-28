@@ -1508,6 +1508,14 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127298100_revoke_legacy_sarah_task_rpcs.sql
+      - name: Apply Sarah historical task journal migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261128120000_sarah_ai_task_history_journal.sql
+      - name: Verify Sarah historical task journal isolation and redaction
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_task_history_journal.test.sql
       - name: Verify Sarah task state is private to the trusted gateway
         env:
           PGPASSWORD: postgres
