@@ -2,6 +2,23 @@
 -- from the seven-day resumable checkpoint retention window.
 BEGIN;
 
+-- The earlier durable-checkpoint fixture must be preserved by the backfill,
+-- even though its resumable checkpoint has already expired.
+DO $task_history_backfill$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.sarah_ai_task_history
+    WHERE auth_user_id = '10000000-0000-4000-8000-000000000001'
+      AND auth_session_id = '20000000-0000-4000-8000-000000000001'
+      AND request_id = '70000000-0000-4000-8000-000000000099'
+      AND status = 'WAITING_CONFIRMATION'
+  ) THEN
+    RAISE EXCEPTION 'Retained pre-journal Sarah task was not backfilled into historical journal';
+  END IF;
+END;
+$task_history_backfill$;
+
 SET ROLE service_role;
 SELECT set_config('request.jwt.claim.role','service_role',true);
 
