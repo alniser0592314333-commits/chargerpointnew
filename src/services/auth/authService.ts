@@ -71,6 +71,7 @@ export type Permission =
   | "orders:correct"
   | "orders:renumber-day"
   | "customers:view"
+  | "customers:send-sms"
   | "customers:create"
   | "customers:edit"
   | "customers:deactivate"

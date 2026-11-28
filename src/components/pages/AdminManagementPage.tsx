@@ -93,6 +93,7 @@ export const AdminManagementPage: React.FC = () => {
     { key: "orders:correct", labelEn: "Correct Orders", labelAr: "تصحيح الطلبات" },
     { key: "orders:renumber-day", labelEn: "Renumber Day Orders", labelAr: "إعادة ترقيم طلبات يوم" },
     { key: "customers:view", labelEn: "View Customers", labelAr: "عرض العملاء" },
+    { key: "customers:send-sms", labelEn: "Send SMS from Admin APK", labelAr: "إرسال رسائل SMS من تطبيق الأدمن" },
     { key: "customers:create", labelEn: "Create Customers", labelAr: "إضافة عملاء" },
     { key: "customers:edit", labelEn: "Edit Customers", labelAr: "تعديل العملاء" },
     { key: "customers:deactivate", labelEn: "Suspend Customers", labelAr: "إيقاف العملاء" },
