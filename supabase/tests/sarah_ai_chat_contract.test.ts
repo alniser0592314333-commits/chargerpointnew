@@ -831,7 +831,8 @@ describe("Sarah historical task journal", () => {
     expect(source).toContain('admin.rpc("sarah_ai_task_history_list"');
     expect(source).toContain("p_exclude_request_id: requestId");
     expect(source).toContain("AI_TASK_HISTORY_UNAVAILABLE");
-    expect(source).toContain("لا تعِد تشغيلها");
+    expect(source).toContain("هذا السجل للقراءة فقط");
+    expect(source).toContain("لا تعِد بناء مهمة تاريخية أو تشغيلها");
   });
 
   it("uses an account-scoped sanitized journal independent from expiring checkpoints", () => {
