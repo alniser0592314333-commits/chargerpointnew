@@ -14,6 +14,8 @@ export interface SarahChatResponse {
   requiresBin?: boolean;
   pendingAction?: SarahPendingBinAction;
   binError?: "BIN_INVALID";
+  requiresLocalSms?: boolean;
+  localSmsAction?: SarahPendingBinAction;
   requiresLocalSync?: boolean;
   localSyncAction?: "manual_sync";
   taskPending?: boolean;
@@ -41,6 +43,7 @@ export interface SarahLocalSyncActionResult {
 export interface SarahChatClientContext {
   localSyncContext?: SarahLocalSyncContext;
   localSyncActionResult?: SarahLocalSyncActionResult;
+  localSmsActionResult?: { actionRequestId: string; submitted: boolean; parts?: number; subscriptionId?: number; errorCode?: string };
 }
 
 const endpoint = () => {
@@ -104,6 +107,7 @@ export const sarahChatService = {
     if (bin) requestBody.bin = bin;
     if (clientContext?.localSyncContext) requestBody.localSyncContext = clientContext.localSyncContext;
     if (clientContext?.localSyncActionResult) requestBody.localSyncActionResult = clientContext.localSyncActionResult;
+    if (clientContext?.localSmsActionResult) requestBody.localSmsActionResult = clientContext.localSmsActionResult;
     if (confirmationAction) requestBody.confirmationAction = { token: confirmationAction.token };
     if (resumeTask) requestBody.resumeTask = true;
 
@@ -143,6 +147,16 @@ export const sarahChatService = {
     }
     if (response.status === 428 && data.error === "LOCAL_SYNC_REQUIRED" && data.action === "manual_sync") {
       return { answer: "", modelId: "", requiresLocalSync: true, localSyncAction: "manual_sync" };
+    }
+    if (response.status === 428 && data.error === "LOCAL_SMS_REQUIRED") {
+      const pending = data.pendingAction && typeof data.pendingAction === "object" && !Array.isArray(data.pendingAction)
+        ? data.pendingAction as Record<string, unknown> : null;
+      const pendingAction = pending && typeof pending.token === "string" && pending.token.length <= 12000
+        && pending.name === "send_sms" && pending.args && typeof pending.args === "object" && !Array.isArray(pending.args)
+        && typeof pending.actionRequestId === "string"
+        ? { token: pending.token, name: pending.name, args: pending.args as Record<string, unknown>, actionRequestId: pending.actionRequestId }
+        : undefined;
+      return { answer: "", modelId: "", requiresLocalSms: true, localSmsAction: pendingAction };
     }
     if (response.status === 428 && data.error === "BIN_REQUIRED") {
       const pending = data.pendingAction && typeof data.pendingAction === "object" && !Array.isArray(data.pendingAction)
