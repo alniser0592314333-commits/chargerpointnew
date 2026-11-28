@@ -4,11 +4,11 @@ import { readFileSync } from "node:fs";
 describe("Sarah phone defaults and secure payment confirmation", () => {
   const edge = readFileSync("supabase/functions/sarah-ai-chat/index.ts", "utf8");
   const migration = readFileSync(
-    "supabase/migrations/20261128153000_sarah_phone_defaults_and_super_admin_payment_review.sql",
+    "supabase/migrations/20261128131216_sarah_phone_defaults_and_super_admin_payment_review.sql",
     "utf8",
   );
   const existingOrderMigration = readFileSync(
-    "supabase/migrations/20261128160000_sarah_add_item_database_defaults.sql",
+    "supabase/migrations/20261128131341_sarah_add_item_database_defaults.sql",
     "utf8",
   );
   const chatService = readFileSync("src/services/ai/sarahChatService.ts", "utf8");
