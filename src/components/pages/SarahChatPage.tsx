@@ -1067,7 +1067,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
         {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
         {messages.slice().reverse().map((message, index) => {
-          const identity = messageIdentity(message, index);
+          const identity = messageIdentity(message, messages.length - 1 - index);
           const revealed = revealedMessageId === identity;
           const offset = swipeOffset?.id === identity ? swipeOffset.value : 0;
           const time = messageTime(message.createdAt);
