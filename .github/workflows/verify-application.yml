@@ -1508,10 +1508,18 @@ jobs:
         env:
           PGPASSWORD: postgres
         run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261127298100_revoke_legacy_sarah_task_rpcs.sql
+      - name: Seed retained Sarah failure before journal creation
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/tests/sarah_ai_task_history_backfill_fixture.test.sql
       - name: Apply Sarah historical task journal migration
         env:
           PGPASSWORD: postgres
-        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261128120000_sarah_ai_task_history_journal.sql
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261128082334_sarah_ai_task_history_journal.sql
+      - name: Backfill retained Sarah task checkpoints into history
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20261128083000_sarah_ai_task_history_backfill.sql
       - name: Verify Sarah historical task journal isolation and redaction
         env:
           PGPASSWORD: postgres

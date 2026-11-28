@@ -2,6 +2,23 @@
 -- from the seven-day resumable checkpoint retention window.
 BEGIN;
 
+-- The earlier durable-checkpoint fixture must be preserved by the backfill,
+-- even though its resumable checkpoint has already expired.
+DO $task_history_backfill$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.sarah_ai_task_history
+    WHERE auth_user_id = '10000000-0000-4000-8000-000000000001'
+      AND auth_session_id = '20000000-0000-4000-8000-000000000001'
+      AND request_id = '70000000-0000-4000-8000-000000000096'
+      AND status = 'FAILED'
+  ) THEN
+    RAISE EXCEPTION 'Retained pre-journal Sarah task was not backfilled into historical journal';
+  END IF;
+END;
+$task_history_backfill$;
+
 SET ROLE service_role;
 SELECT set_config('request.jwt.claim.role','service_role',true);
 
@@ -14,6 +31,8 @@ DECLARE
   v_result jsonb;
   v_tasks jsonb;
   v_steps jsonb;
+  v_current_task jsonb;
+  v_backfilled_task jsonb;
 BEGIN
   PERFORM public.sarah_ai_task_gateway_load_or_create(
     v_actor, v_session, v_request, v_hash, '{"phase":"INITIAL"}'::jsonb
@@ -38,14 +57,23 @@ BEGIN
 
   v_result := public.sarah_ai_task_history_list(v_actor, v_session, 20, true, NULL);
   v_tasks := v_result -> 'tasks';
-  IF jsonb_array_length(v_tasks) <> 1 THEN
-    RAISE EXCEPTION 'Expected one failed historical task, got %', v_result;
+  IF jsonb_array_length(v_tasks) <> 2 THEN
+    RAISE EXCEPTION 'Expected the new failure plus one backfilled historical task, got %', v_result;
   END IF;
-  v_steps := v_tasks -> 0 -> 'steps';
+  SELECT item.value INTO v_current_task
+  FROM jsonb_array_elements(v_tasks) AS item(value)
+  WHERE item.value ->> 'request_id' = v_request::text;
+  SELECT item.value INTO v_backfilled_task
+  FROM jsonb_array_elements(v_tasks) AS item(value)
+  WHERE item.value ->> 'request_id' = '70000000-0000-4000-8000-000000000096';
+  IF v_current_task IS NULL OR v_backfilled_task IS NULL THEN
+    RAISE EXCEPTION 'Current or pre-existing task is missing from the journal: %', v_tasks;
+  END IF;
+  v_steps := v_current_task -> 'steps';
   IF jsonb_array_length(v_steps) <> 3
-     OR v_tasks -> 0 ->> 'failed_count' <> '1'
-     OR v_tasks -> 0 ->> 'succeeded_count' <> '1'
-     OR v_tasks -> 0 ->> 'not_executed_count' <> '1' THEN
+     OR v_current_task ->> 'failed_count' <> '1'
+     OR v_current_task ->> 'succeeded_count' <> '1'
+     OR v_current_task ->> 'not_executed_count' <> '1' THEN
     RAISE EXCEPTION 'Historical step outcomes were not recorded accurately: %', v_result;
   END IF;
   IF v_steps::text ILIKE '%PRIVATE%'
@@ -60,6 +88,11 @@ BEGIN
      OR v_steps -> 1 ->> 'status' <> 'failed'
      OR v_steps -> 2 ->> 'status' <> 'not_executed' THEN
     RAISE EXCEPTION 'Historical step sequence/status mismatch: %', v_steps;
+  END IF;
+  IF v_backfilled_task ->> 'failed_count' <> '1'
+     OR v_backfilled_task -> 'steps' -> 0 ->> 'capability' <> 'lookup_customers'
+     OR v_backfilled_task -> 'steps' -> 0 ->> 'status' <> 'failed' THEN
+    RAISE EXCEPTION 'Pre-existing failed checkpoint was not accurately backfilled: %', v_backfilled_task;
   END IF;
 END;
 $task_history_capture$;
@@ -96,8 +129,8 @@ BEGIN
     '20000000-0000-4000-8000-000000000001',
     20, true, NULL
   );
-  IF jsonb_array_length(v_result -> 'tasks') <> 1 THEN
-    RAISE EXCEPTION 'Historical task journal was deleted with its resumable checkpoint: %', v_result;
+  IF jsonb_array_length(v_result -> 'tasks') <> 2 THEN
+    RAISE EXCEPTION 'Historical task journal was deleted with its resumable checkpoint or leaked another account: %', v_result;
   END IF;
 END;
 $task_history_survives$;
