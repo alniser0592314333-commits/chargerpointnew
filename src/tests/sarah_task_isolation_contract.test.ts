@@ -52,7 +52,7 @@ describe("Sarah independent task and partial failure contract", () => {
 
   it("keeps unfinished tasks attached to their originating daily conversation", () => {
     expect(page).toContain("conversationDate: selectedDate");
-    expect(page).toContain('(item.conversationDate || gazaDateKey()) === selectedDate');
-    expect(page).toContain('(row.conversationDate || gazaDateKey()) === selectedDate');
+    expect(page).toContain("queueConversationDate(item) === selectedDate");
+    expect(page).toContain("queueConversationDate(row) === selectedDate");
   });
 });
