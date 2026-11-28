@@ -624,8 +624,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         if (!isCurrent(accountId, operation)) return;
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         await sarahInputQueue.transition(accountId, id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", {
-          lastErrorCode: protectedActionConfirmed ? "AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION" : err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
-              pendingBinAction: protectedActionConfirmed ? undefined : current.pendingBinAction,
+          lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
         });
         setMessages((prev) => prev.map((item) => item.queueId === id
           ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة" }
