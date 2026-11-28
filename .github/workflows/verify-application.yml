@@ -279,6 +279,14 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN; CREATE ROLE service_role NOLOGIN; CREATE SCHEMA auth; CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS 'SELECT current_setting(''request.jwt.claim.sub'', true)::uuid';"
+      - name: Verify single active administrator session and bounded login history
+        env:
+          PGPASSWORD: postgres
+        run: |
+          createdb -h localhost -U postgres single_admin_session_test
+          psql -h localhost -U postgres -d single_admin_session_test -v ON_ERROR_STOP=1 -f supabase/tests/single_active_admin_session_fixture.sql
+          psql -h localhost -U postgres -d single_admin_session_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261128130000_single_active_admin_session_policy.sql
+          psql -h localhost -U postgres -d single_admin_session_test -v ON_ERROR_STOP=1 -f supabase/tests/single_active_admin_session_runtime.test.sql
       - name: Verify authoritative customer charger-fee migration in isolation
         env:
           PGPASSWORD: postgres

@@ -10,6 +10,9 @@ export interface AccountSession {
   client_type?: "browser" | "installed_pwa" | "native";
   session_expires_at?: string;
   is_expired?: boolean;
+  revoked_at?: string | null;
+  revoked_by_session_id?: string | null;
+  revocation_reason?: string | null;
 }
 
 export interface SessionDeviceDescription {
