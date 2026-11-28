@@ -6,7 +6,7 @@ on:
       release_version:
         description: "Version to build (X.Y.Z; must be newer than the installed app)"
         required: true
-        default: "1.3.10"
+        default: "1.4.3"
         type: string
       release_target:
         description: "Which APK to release"
