@@ -1518,7 +1518,6 @@ Deno.serve(async (req) => {
       toolResult = {
         ok: true,
         status: "submitted",
-        phone: normalizedPhone,
         parts: boundedCount(suppliedLocalSmsActionResult.parts),
         subscription_id: boundedCount(suppliedLocalSmsActionResult.subscriptionId),
       };
