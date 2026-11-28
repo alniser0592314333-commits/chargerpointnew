@@ -74,12 +74,10 @@ BEGIN
   SET revoked = true, updated_at = now()
   WHERE rt.user_id = NEW.user_id::text
     AND rt.session_id IN (
-      SELECT a.session_id
-      FROM public.account_sessions a
-      WHERE a.user_id = NEW.user_id
-        AND a.session_id <> NEW.session_id
-        AND a.revoked_by_session_id = NEW.session_id
-        AND a.revocation_reason = 'new_login'
+      SELECT s.id
+      FROM auth.sessions s
+      WHERE s.user_id = NEW.user_id
+        AND s.id <> NEW.session_id
     )
     AND rt.revoked IS NOT TRUE;
 
