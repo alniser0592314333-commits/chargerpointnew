@@ -343,8 +343,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
       const action = response.localSmsAction;
       const phone = typeof action.args.phone === "string" ? action.args.phone.trim() : "";
-      const messageText = typeof action.args.message === "string" ? action.args.message.trim() : "";
-      if (!phone || !messageText) throw new Error("SMS_ACTION_ARGUMENTS_INVALID");
+      const messageText = typeof action.args.message === "string" ? action.args.message : "";
+      if (!phone || !messageText.trim()) throw new Error("SMS_ACTION_ARGUMENTS_INVALID");
       const permission = await invokeSupabaseRpc<Record<string, unknown>>("sarah_ai_get_chat_access_context", {
         p_cached_permissions_version: null,
       });
