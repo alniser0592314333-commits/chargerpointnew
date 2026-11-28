@@ -8,6 +8,65 @@ export interface SarahPendingBinAction {
   actionRequestId: string;
 }
 
+export interface SarahPartialProgressStep {
+  capability: string;
+  status: "succeeded" | "failed" | "not_executed" | "pending";
+}
+
+export class SarahPartialTaskError extends Error {
+  readonly partialSummary: string;
+  readonly errorCode: string;
+  constructor(errorCode: string, partialSummary: string) {
+    super(errorCode);
+    this.name = "SarahPartialTaskError";
+    this.errorCode = errorCode;
+    this.partialSummary = partialSummary;
+  }
+}
+
+const formatPartialProgress = (value: unknown): string | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const rawSteps = (value as Record<string, unknown>).steps;
+  if (!Array.isArray(rawSteps)) return null;
+  const labels: Record<string, string> = {
+    lookup_customers: "البحث عن العملاء",
+    get_customer_orders: "قراءة الطلبات",
+    create_order_for_customer: "إنشاء الطلب",
+    add_items_to_order: "إضافة عناصر للطلب",
+    deliver_order_item: "تسليم العنصر",
+    record_customer_payment: "تسجيل الدفعة",
+    record_and_approve_customer_payment: "تسجيل واعتماد الدفعة",
+    approve_payment_submission: "اعتماد الدفعة المعلّقة",
+    reject_payment_submission: "رفض الدفعة المعلّقة",
+    adjust_customer_finances: "التعديل المالي",
+    create_customer_goal: "إنشاء الهدف",
+    update_customer_goal: "تعديل الهدف",
+    approve_customer_goal_request: "اعتماد طلب الهدف",
+    send_sms: "إرسال الرسالة النصية",
+    update_business_hours: "تعديل ساعات العمل",
+    update_jawwal_pay_recipient: "تعديل رقم جوال باي",
+  };
+  const groups: Record<SarahPartialProgressStep["status"], string[]> = {
+    succeeded: [], failed: [], not_executed: [], pending: [],
+  };
+  for (const item of rawSteps) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const step = item as Record<string, unknown>;
+    const capability = typeof step.capability === "string" ? step.capability : "";
+    const status = step.status;
+    if (!capability || !(status in groups)) continue;
+    groups[status as SarahPartialProgressStep["status"]].push(labels[capability] || "عملية أخرى");
+  }
+  if (!groups.succeeded.length && !groups.failed.length) return null;
+  const lines = ["ملخص التنفيذ قبل التوقف:"];
+  if (groups.succeeded.length) lines.push(`نجح: ${groups.succeeded.join("، ")}.`);
+  if (groups.failed.length) lines.push(`فشل: ${groups.failed.join("، ")}.`);
+  if (groups.not_executed.length) lines.push(`لم يُنفّذ بعد: ${groups.not_executed.join("، ")}.`);
+  if (groups.pending.length) lines.push(`بانتظار التنفيذ: ${groups.pending.join("، ")}.`);
+  lines.push("حُفظ تقدم المهمة. عند طلب «أعد المحاولة» سأستكمل الخطوات غير المكتملة فقط، ولن أعيد الخطوات الناجحة.");
+  return lines.join("\\n");
+};
+
 export interface SarahChatResponse {
   answer: string;
   modelId: string;
@@ -183,6 +242,8 @@ export const sarahChatService = {
     }
     if (!response.ok || data.ok !== true) {
       const code = typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED";
+      const partialSummary = formatPartialProgress(data.partialProgress);
+      if (partialSummary) throw new SarahPartialTaskError(code, partialSummary);
       const friendly: Record<string, string> = {
         AI_TOOL_CALL_BATCH_NOT_SAFE: "تعذر ترتيب بعض خطوات الطلب بأمان. لم تُنفذ الخطوات غير المؤكدة؛ أعد المحاولة وسيُعاد فحص المتطلبات قبل التنفيذ.",
         AI_CAPABILITY_PERMISSION_REQUIRED: "صلاحيات حسابك الحالية لا تسمح بهذا الإجراء.",
