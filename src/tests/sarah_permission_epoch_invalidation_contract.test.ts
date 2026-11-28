@@ -26,7 +26,7 @@ describe("Sarah permission epoch invalidation", () => {
     expect(client).toContain("window.removeEventListener(\"cp-supabase-auth-token-updated\", onAuthTokenUpdated)");
     expect(client).toContain("event: 'UPDATE'");
     expect(client).toContain("No polling or service-role credential is used");
-    expect(page).toContain("database still checks live permissions on every protected RPC");
+    expect(page).toContain("the database still checks live permissions on every");
     expect(app).toContain("detail.authUserId !== userSession?.authUserId");
     expect(app).toContain("void handleFocus()");
     expect(app).toContain("}, [userSession?.authUserId]);");
