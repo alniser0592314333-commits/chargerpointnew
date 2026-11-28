@@ -18,8 +18,6 @@ export interface SarahChatResponse {
   localSmsAction?: SarahPendingBinAction;
   requiresLocalSync?: boolean;
   localSyncAction?: "manual_sync";
-  requiresLocalSms?: boolean;
-  localSmsAction?: SarahPendingBinAction;
   taskPending?: boolean;
   retryAfterMs?: number;
 }
