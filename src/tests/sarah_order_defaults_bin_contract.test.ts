@@ -39,5 +39,7 @@ describe("Sarah phone defaults and secure payment confirmation", () => {
     expect(migration).toContain("a.role IN ('SUPER_ADMIN', 'Super Admin')");
     expect(migration).toContain("finance:approve-payment");
     expect(migration).toContain("AND NOT EXISTS (");
+    expect(edge).toContain("/Missing payment (review|creation) permission/i.test(message)");
+    expect(edge).toContain("AI_CAPABILITY_PERMISSION_REQUIRED");
   });
 });
