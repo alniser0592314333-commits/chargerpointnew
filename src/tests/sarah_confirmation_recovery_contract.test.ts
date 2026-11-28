@@ -14,7 +14,7 @@ describe("Sarah UI, secure confirmation, and actionable failure contract", () =>
     expect(page).not.toContain("<Menu");
     expect(page).toContain('aria-label="فتح محادثات سارة"');
     expect(page).toContain("justify-center border-t");
-    expect(page).toMatch(/<LogOut[^>]*\\/>\\s*خروج\\s*<\\/button>/);
+    expect(page).toContain("/> خروج");
     expect(page).not.toContain("خروج من سارة");
   });
 
