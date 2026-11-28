@@ -75,12 +75,12 @@ BEGIN
   ) AS sanitized;
 
   SELECT
-    count(*) FILTER (WHERE item ->> 'status' = 'succeeded')::integer,
-    count(*) FILTER (WHERE item ->> 'status' = 'failed')::integer,
-    count(*) FILTER (WHERE item ->> 'status' = 'not_executed')::integer,
-    count(*) FILTER (WHERE item ->> 'status' = 'pending')::integer
+    count(*) FILTER (WHERE value ->> 'status' = 'succeeded')::integer,
+    count(*) FILTER (WHERE value ->> 'status' = 'failed')::integer,
+    count(*) FILTER (WHERE value ->> 'status' = 'not_executed')::integer,
+    count(*) FILTER (WHERE value ->> 'status' = 'pending')::integer
   INTO v_succeeded, v_failed, v_not_executed, v_pending
-  FROM jsonb_array_elements(v_steps) AS item;
+  FROM jsonb_array_elements(v_steps) AS step(value);
 
   INSERT INTO public.sarah_ai_task_history (
     auth_user_id, request_id, status, steps,
