@@ -145,8 +145,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     const observeNewDay = () => {
       const today = gazaDateKey();
       if (today === lastObservedTodayRef.current) return;
-      lastObservedTodayRef.current = today;
       if (busy || pendingBinAction) return;
+      lastObservedTodayRef.current = today;
       setMessages([]);
       setHydratedDate(null);
       setSelectedDate(today);
