@@ -483,7 +483,16 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     }
     const operation = accountScopeRef.current.generation;
     const baseMessages = messages;
-    const historySnapshot = buildSarahHistorySnapshot(baseMessages);
+    const historySnapshot = buildSarahHistorySnapshot(baseMessages.map((message) => {
+      const priorTask = message.queueId ? pending.find((row) => row.id === message.queueId) : undefined;
+      const taskNeedsAttention = message.status === "failed" || priorTask?.state === "NEEDS_ATTENTION";
+      if (!taskNeedsAttention) return { role: message.role, text: message.text };
+      const errorCode = priorTask?.lastErrorCode || "AI_REQUEST_INTERRUPTED";
+      return {
+        role: message.role,
+        text: `${message.text}\n\n[سجل مهمة سابقة: توقفت دون رد نهائي. الحالة: NEEDS_ATTENTION. رمز الخطأ: ${errorCode}. هذه معلومة تاريخية فقط؛ لا تستأنف المهمة إلا إذا طلب المستخدم ذلك صراحةً.]`,
+      };
+    }));
     setError("");
     setBusy(true);
     const id = crypto.randomUUID();
@@ -599,7 +608,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             createdAt: new Date().toISOString(),
             status: offline ? "offline" as const : "failed" as const,
             queueId: id,
-            statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة",
+            statusText: offline ? "بانتظار عودة الاتصال" : "توقفت قبل وصول الرد النهائي؛ يمكن استكمالها من آخر نقطة محفوظة",
           },
         ];
         setMessages(failureMessages);
@@ -908,7 +917,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           }
         } catch {}
         setMessages((prev) => prev.map((item) => item.queueId === pendingAction.id
-          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة بعد التأكيد الأمني" }
+          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "توقفت بعد التأكيد؛ يمكن استكمالها من آخر نقطة محفوظة" }
           : item));
         setPendingBinAction(null);
         setBinValue("");
