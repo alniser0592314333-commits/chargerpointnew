@@ -15,6 +15,8 @@ export interface SarahInputRecord {
   deviceId: string;
   sequence: number;
   createdAt: string;
+  /** Daily transcript this independent task belongs to. */
+  conversationDate?: string;
   kind: SarahInputKind;
   state: SarahInputState;
   text?: string;
