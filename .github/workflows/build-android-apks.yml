@@ -19,6 +19,12 @@ on:
       - 'src/App.tsx'
       - 'src/components/pages/CustomerLinkSmsPage.tsx'
       - 'src/components/pages/CustomersPage.tsx'
+      - 'src/components/pages/AddOrderPage.tsx'
+      - 'src/components/pages/DayDetailPage.tsx'
+      - 'src/components/pages/dayOrdersStore.ts'
+      - 'src/utils/customerSearch.ts'
+      - 'src/utils/orderSearchProjection.ts'
+      - 'src/tests/order_search_legacy_data.test.ts'
       - 'src/components/shell/Sidebar.tsx'
       - 'src/components/shell/MobileNav.tsx'
       - 'src/navigation/backNavigation.ts'
@@ -89,7 +95,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://test.supabase.local
           VITE_SUPABASE_ANON_KEY: test-anon-key
-        run: npx vitest run src/tests/native_push_notifications.test.ts src/tests/customer_portal_polish.test.ts src/tests/local_payment_helper_code.test.ts src/tests/admin_session_lifecycle_regression.test.ts
+        run: npx vitest run src/tests/native_push_notifications.test.ts src/tests/customer_portal_polish.test.ts src/tests/local_payment_helper_code.test.ts src/tests/admin_session_lifecycle_regression.test.ts src/tests/order_search_legacy_data.test.ts
 
       - name: Typecheck native push Edge Function
         run: deno check --node-modules-dir=auto supabase/functions/native-push/index.ts
