@@ -232,7 +232,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         <Button type="button" variant="outline" size="sm" disabled={busy || loading || !sessions.some((session) => session.is_current)} onClick={() => setPendingAction("others")} className="h-9 gap-1.5 text-xs">
           <Globe className="h-3.5 w-3.5" />{isArabic ? "إخراج الأجهزة الأخرى" : "Sign out other devices"}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.every((session) => Boolean(session.revoked_at) || Boolean(session.is_expired))} onClick={() => setPendingAction("all")} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || !sessions.some((session) => session.is_current)} onClick={() => setPendingAction("all")} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
           <LogOut className="h-3.5 w-3.5" />{isArabic ? "إخراج الجميع" : "Sign out all"}
         </Button>
       </div>
