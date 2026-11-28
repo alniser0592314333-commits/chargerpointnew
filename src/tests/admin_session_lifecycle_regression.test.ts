@@ -336,6 +336,22 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(auth).toContain("await reactivateMyAccountSession(token)");
   });
 
+  it("activates each fresh account session before profile loading and avoids a duplicate registration during app launch", () => {
+    const authSource = readFileSync("src/services/auth/authService.ts", "utf8");
+    const appSource = readFileSync("src/App.tsx", "utf8");
+    const normalLogin = authSource.slice(
+      authSource.indexOf("async login("),
+      authSource.indexOf("async loginWithSavedAccount("),
+    );
+    const reactivationIndex = normalLogin.indexOf("await reactivateMyAccountSession(signInRes.session.access_token)");
+    const profileIndex = normalLogin.indexOf("this.getAdminProfile(signInRes.session.access_token)");
+
+    expect(reactivationIndex).toBeGreaterThanOrEqual(0);
+    expect(profileIndex).toBeGreaterThan(reactivationIndex);
+    expect(appSource).toContain("if (!session) throw new Error('PROFILE_RPC_FAILED')");
+    expect(appSource).not.toContain("registerCurrentAccountSession()");
+  });
+
   it("provides separate save-and-sign-out and revoke-and-sign-out choices", () => {
     const settings = readFileSync("src/components/pages/SettingsPage.tsx", "utf8");
     const app = readFileSync("src/App.tsx", "utf8");
