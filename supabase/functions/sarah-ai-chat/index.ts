@@ -1306,7 +1306,11 @@ Deno.serve(async (req) => {
         return { capability: name, status: "not_executed" as const };
       }
       if (result.ok === false || result.success === false || typeof result.error === "string") {
-        return { capability: name, status: "failed" as const };
+        return {
+          capability: name,
+          status: "failed" as const,
+          reasonCode: safeText(result.reasonCode, 80) || safeText(result.error, 80) || "ACTION_FAILED",
+        };
       }
       return { capability: name, status: "succeeded" as const };
     });
@@ -3051,11 +3055,15 @@ Deno.serve(async (req) => {
               return respond(428, { ok: false, error: "BIN_REQUIRED", pendingAction });
             }
             if (execution.response.status === 401) return execution.response;
+            const failurePayload = await execution.response.clone().json().catch(() => ({})) as Record<string, unknown>;
+            const failureCode = safeText(failurePayload.error, 80)
+              || (execution.response.status === 403 ? "PERMISSION_DENIED"
+                : execution.response.status === 404 ? "TARGET_NOT_FOUND"
+                : "ACTION_FAILED");
             resultsByIndex.set(requestedCall.index, {
               ok: false,
-              error: execution.response.status === 403 ? "PERMISSION_DENIED"
-                : execution.response.status === 404 ? "TARGET_NOT_FOUND"
-                : "ACTION_FAILED",
+              error: failureCode,
+              reasonCode: safeText(failurePayload.reasonCode, 80) || failureCode,
               status: execution.response.status,
             });
             await checkpointTask("RUNNING", {
