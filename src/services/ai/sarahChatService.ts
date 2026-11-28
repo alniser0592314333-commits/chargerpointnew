@@ -284,9 +284,53 @@ export const sarahChatService = {
     }
     if (!response.ok || data.ok !== true) {
       const code = typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED";
+      const reasonCode = typeof data.reasonCode === "string" ? data.reasonCode : "";
       const partialSummary = formatPartialProgress(data.partialProgress);
       if (partialSummary) throw new SarahPartialTaskError(code, partialSummary);
       const friendly: Record<string, string> = {
+        METHOD_NOT_ALLOWED: "طريقة إرسال الطلب غير مدعومة.",
+        SERVICE_UNAVAILABLE: "خدمة سارة غير متاحة مؤقتًا. لم يتم تأكيد تنفيذ العملية.",
+        ADMIN_SESSION_UNAVAILABLE: "انتهت جلسة الأدمن أو لم تعد صالحة. سجّل الدخول مجددًا ثم تحقق من حالة العملية قبل تكرارها.",
+        ADMIN_PERMISSION_CONTEXT_UNAVAILABLE: "تعذر التحقق من صلاحيات حسابك من قاعدة البيانات؛ أوقفت سارة التنفيذ احترازيًا.",
+        AI_USE_PERMISSION_REQUIRED: "صلاحية استخدام سارة غير ممنوحة لهذا الحساب.",
+        AI_PROVIDER_NOT_CONFIGURED: "إعدادات مزود الذكاء الاصطناعي غير مكتملة أو معطلة.",
+        PROVIDER_CREDENTIAL_UNAVAILABLE: "تعذر الوصول إلى مفتاح مزود الذكاء الاصطناعي من التخزين الآمن.",
+        AI_PROVIDER_CONFIGURATION_INVALID: "إعدادات النموذج تحتوي قيمة غير صالحة.",
+        AI_REQUEST_TIMEOUT: "انتهت مهلة استجابة مزود الذكاء الاصطناعي. تم حفظ التقدم المؤكد.",
+        AI_TASK_INTERRUPTED: "انقطع تنفيذ المهمة. تحقّق التقدم المحفوظ قبل استكمال الخطوات غير المنفذة.",
+        AI_TASK_HISTORY_UNAVAILABLE: "تعذر قراءة سجل المهام السابقة؛ لم يتم تنفيذ أي إجراء بناءً على سجل غير متاح.",
+        AI_CAPABILITY_INPUT_INVALID: "بيانات العملية غير مكتملة أو بصيغة غير صحيحة. راجع الحقول المطلوبة والقيمة المدخلة.",
+        AI_CAPABILITY_NOT_FOUND: "لم يتم العثور على السجل أو العنصر المطلوب، أو أن مرجعه لم يعد صالحًا.",
+        AI_CAPABILITY_UNAVAILABLE: "تعذر على قاعدة البيانات إكمال العملية بسبب خطأ داخلي. لم تعتبر سارة العملية ناجحة.",
+        AI_DEVICE_DEFAULT_UNAVAILABLE: "تعذر العثور على نوع الهاتف الافتراضي (شاومي) في قائمة الأجهزة النشطة.",
+        AI_TOOL_RATE_LIMITED: "رفض النظام تنفيذ المزيد من استدعاءات الأدوات ضمن هذه العملية.",
+        AI_RATE_LIMITED: "وصل الطلب إلى حد الاستخدام المؤقت. حاول لاحقًا.",
+        AI_DAILY_LIMIT_REACHED: "وصل الطلب إلى حد الاستخدام اليومي.",
+        GEMINI_QUOTA_OR_RATE_LIMIT: "مزود Gemini رفض الطلب بسبب حد الاستخدام أو معدل الطلبات.",
+        GEMINI_PROVIDER_UNAVAILABLE: "مزود Gemini غير متاح حاليًا.",
+        GEMINI_REQUEST_REJECTED: "رفض مزود Gemini الطلب؛ راجع إعدادات النموذج أو صيغة الطلب.",
+        AI_INVALID_PROVIDER_RESPONSE: "وصل رد غير مفهوم من مزود الذكاء الاصطناعي.",
+        AI_EMPTY_RESPONSE: "لم يُرجع النموذج ردًا. لم تعتبر سارة أي خطوة غير مؤكدة ناجحة.",
+        AI_PROVIDER_RESPONSE_TOO_LARGE: "رد مزود الذكاء الاصطناعي تجاوز الحجم المسموح.",
+        AI_TOOL_UNKNOWN: "طلب النموذج أداة غير مسجلة؛ تم رفضها ولم تُنفذ.",
+        AI_CAPABILITY_CONFLICT: "رفضت قاعدة البيانات العملية بسبب تعارض في حالة السجل أو شرط عمل. راجع الحالة الحالية قبل إعادة المحاولة.",
+        AI_CAPABILITY_TARGET_NOT_FOUND: "لم يتم العثور على الهدف المطلوب. تأكد من العميل أو الطلب أو العنصر المحدد.",
+        AI_CAPABILITY_STALE_DATA: "تغيرت البيانات منذ قراءتها؛ أعد تحميلها ثم أعد تحديد الإجراء المطلوب.",
+        AI_CAPABILITY_DATABASE_RULE_REJECTED: "قاعدة البيانات رفضت العملية بسبب قاعدة عمل أو حالة غير مسموح بها.",
+        AI_CAPABILITY_PERMISSION_REVOKED: "الصلاحية المطلوبة غير متاحة لهذا الحساب أو تم سحبها قبل التنفيذ.",
+        BIN_REQUIRED: "تتطلب هذه الخطوة تأكيدًا أمنيًا عبر نافذة BIN.",
+        BIN_INVALID: "رمز BIN غير صحيح. لم تُعتمد العملية بهذا الرمز.",
+        BIN_CONFIRMATION_EXPIRED: "انتهت صلاحية طلب التأكيد الأمني؛ ابدأ العملية من جديد بعد التحقق من حالتها.",
+        BIN_CONFIRMATION_INVALID: "تعذر التحقق من رمز التأكيد المرتبط بهذه العملية أو أنه لا يخص الجلسة الحالية.",
+        LOCAL_SYNC_REQUIRED: "تتطلب هذه الخطوة تنفيذ مزامنة محلية على الجهاز.",
+        SMS_CUSTOMER_NOT_FOUND: "لم يتم العثور على العميل المطلوب لإرسال الرسالة.",
+        SMS_CUSTOMER_PHONE_MISSING: "لا يوجد رقم هاتف مسجل للعميل المحدد.",
+        SMS_PHONE_INVALID: "رقم الهاتف غير صالح.",
+        SMS_MESSAGE_INVALID: "نص الرسالة فارغ أو يتجاوز الحد المسموح.",
+        REQUEST_TOO_LARGE: "حجم الطلب أكبر من الحد المسموح.",
+        INVALID_REQUEST: "صيغة الطلب المرسل غير صحيحة.",
+        INVALID_HISTORY: "تعذر قراءة سجل المحادثة بسبب بيانات غير صالحة.",
+        HISTORY_TOO_LARGE: "سجل المحادثة أطول من الحد المسموح.",
         AI_TOOL_CALL_BATCH_NOT_SAFE: "تعذر ترتيب بعض خطوات الطلب بأمان. لم تُنفذ الخطوات غير المؤكدة؛ أعد المحاولة وسيُعاد فحص المتطلبات قبل التنفيذ.",
         AI_CAPABILITY_PERMISSION_REQUIRED: "صلاحيات حسابك الحالية لا تسمح بهذا الإجراء.",
         AI_TOOL_UNKNOWN: "تعذر التعرّف على الإجراء المطلوب. لم يتم تنفيذ أي تغيير.",
@@ -316,7 +360,7 @@ export const sarahChatService = {
         SMS_AVAILABLE_IN_ADMIN_ANDROID_APK_ONLY: "إرسال SMS متاح من تطبيق الأدمن على Android فقط.",
 
       };
-      throw new Error(friendly[code] || code);
+      throw new Error(friendly[reasonCode] || friendly[code] || code);
     }
     if (typeof data.answer !== "string" || typeof data.modelId !== "string") {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
