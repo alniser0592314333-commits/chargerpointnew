@@ -50,11 +50,14 @@ describe("Sarah native Android SMS capability", () => {
     expect(page).toContain('cached?.state === "submitted"');
     expect(page).toContain('cached?.state === "started"');
     expect(page).toContain("SMS_SUBMISSION_UNCERTAIN");
+    expect(page).toContain("SMS_IDEMPOTENCY_STORAGE_UNAVAILABLE");
+    expect(page).toContain("preserve the started marker to prevent duplicate sends");
   });
 
   it("does not require a second user confirmation for the explicit send request", () => {
     const edge = read("supabase/functions/sarah-ai-chat/index.ts");
     expect(edge).toContain("send_sms, send immediately without asking for a second confirmation");
     expect(edge).toContain('confirmationName === "send_sms"');
+    expect(edge).toContain("return pendingTaskResponse()");
   });
 });
