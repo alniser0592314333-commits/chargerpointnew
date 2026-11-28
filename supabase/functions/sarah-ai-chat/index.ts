@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
     });
   } else {
     permissions = Array.isArray(profile.permissions)
-      ? profile.permissions.filter((permission): permission is string =>
+      ? (profile.permissions as unknown[]).filter((permission: unknown): permission is string =>
           typeof permission === "string" && permission.length > 0 && permission.length <= 100
         )
       : [];
