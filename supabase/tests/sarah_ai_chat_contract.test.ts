@@ -41,7 +41,10 @@ const jawwalRecipientMigration = read("supabase/migrations/20261024130000_admin_
 describe("Sarah chat gateway security contract", () => {
   it("authenticates the bearer and derives the actor from the verified Auth identity", () => {
     expect(source).toContain("auth.getUser(bearer)");
-    expect(source).toContain('caller.rpc("get_current_admin_profile")');
+    expect(source).toContain('caller.rpc("sarah_ai_get_chat_access_context"');
+    expect(source).toContain("p_cached_permissions_version: usableCachedSnapshot?.version ?? null");
+    expect(source).toContain("profile.permissions_unchanged === true");
+    expect(source).toContain("permissionSnapshotCache.get(userData.user.id)");
     expect(source).toContain("profile.auth_user_id !== userData.user.id");
     expect(source).toContain('permissions.includes("ai:use")');
     expect(source).not.toContain("body.role");
