@@ -108,7 +108,7 @@ export const sarahConversationStore = {
     const id = dailyId(accountId, date);
     const db = await open();
     try {
-      return await transactionResult(db, [STORE, DAILY_STORE], "readwrite", (tx, resolve) => {
+      return await transactionResult(db, [STORE, DAILY_STORE], "readwrite", (tx, resolve, reject) => {
         const daily = tx.objectStore(DAILY_STORE);
         const request = daily.get(id);
         let result: SarahDailyConversation | undefined;
