@@ -1046,7 +1046,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             onTouchEnd={() => {
               const start = swipeStartRef.current;
               const moved = swipeOffsetRef.current?.id === identity ? swipeOffsetRef.current.value : 0;
-              if (start?.id === identity && Math.abs(moved) >= 24) setRevealedMessageId(identity);
+              const correctDirection = message.role === "user" ? moved >= 24 : moved <= -24;
+              if (start?.id === identity && correctDirection) setRevealedMessageId(identity);
               else if (start?.id === identity) setRevealedMessageId(null);
               swipeStartRef.current = null;
               swipeOffsetRef.current = null;
