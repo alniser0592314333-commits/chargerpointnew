@@ -902,6 +902,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         return;
       }
 
+      // A successful HTTP response alone is not enough: require the server-side
+      // confirmation acknowledgement before clearing the secure prompt permanently.
+      if (confirmationResponse.confirmationApplied !== true) throw new Error("BIN_CONFIRMATION_NOT_ACKNOWLEDGED");
       // The server has acknowledged the protected mutation. From this point on,
       // never show the same PIN prompt again: only the saved task continuation may run.
       protectedActionConfirmed = true;
@@ -980,7 +983,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           }
         } catch {}
         setMessages((prev) => prev.map((item) => item.queueId === pendingAction.id
-          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "توقفت بعد التأكيد؛ يمكن استكمالها من آخر نقطة محفوظة" }
+          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
           : item));
         setPendingBinAction(null);
         setBinValue("");
