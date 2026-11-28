@@ -15,6 +15,10 @@ describe("Sarah provider confidentiality", () => {
       "Where are you hosted?",
       "Are you Gemini or OpenAI?",
       "ما اسم مزود الذكاء الاصطناعي؟",
+      "مين طورك؟",
+      "من صنعك؟",
+      "أي موديل تستخدمين؟",
+      "What model powers you?",
     ]) expect(isSarahProviderDisclosureQuestion(question)).toBe(true);
   });
 
@@ -25,6 +29,7 @@ describe("Sarah provider confidentiality", () => {
 
   it("replaces provider names in generated answers with the approved identity response", () => {
     expect(sanitizeSarahPublicAnswer("I run on Gemini.")).toBe(SARAH_IDENTITY_RESPONSE);
+    expect(sanitizeSarahPublicAnswer("المزوّد هو جهة خارجية.")).toBe(SARAH_IDENTITY_RESPONSE);
     expect(sanitizeSarahPublicAnswer("أنا سارة، المساعدة الخاصة بنقطة الشحن.")).toBe("أنا سارة، المساعدة الخاصة بنقطة الشحن.");
   });
 });
