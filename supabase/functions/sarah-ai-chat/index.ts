@@ -2585,7 +2585,8 @@ Deno.serve(async (req) => {
         if (message.includes("AI_TOOL_QUOTA_EXCEEDED") || message.includes("AI_TOOL_DAILY_LIMIT_REACHED")) {
           return { response: respond(429, { ok: false, error: "AI_TOOL_RATE_LIMITED" }) };
         }
-        if (message.includes("Missing settings management permission")) {
+        if (message.includes("Missing settings management permission")
+          || /Missing payment (review|creation) permission/i.test(message)) {
           return { response: respond(403, { ok: false, error: "AI_CAPABILITY_PERMISSION_REQUIRED" }) };
         }
         return { response: respond(409, { ok: false, error: "AI_CAPABILITY_CONFLICT" }) };
