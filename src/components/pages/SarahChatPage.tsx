@@ -746,7 +746,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         .map((item) => item.queueId === record.id
           ? { ...item, status: undefined, statusText: undefined }
           : item);
-      const completedMessages = [...retryMessages, { role: "assistant" as const, text: response.answer, createdAt: new Date().toISOString() }];
+      const completedMessages = [...retryMessages.filter((item) => !(item.role === "assistant" && item.queueId === record.id)), { role: "assistant" as const, text: response.answer, createdAt: new Date().toISOString(), queueId: record.id }];
       await sarahConversationStore.saveDaily(accountId, selectedDate, completedMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate));
       await sarahInputQueue.transition(accountId, record.id, "COMPLETED");
       if (!isCurrent(accountId, operation)) return;
