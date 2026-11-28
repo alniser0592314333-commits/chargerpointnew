@@ -384,10 +384,11 @@ Deno.serve(async (req) => {
         parameters: {
           type: "OBJECT",
           properties: {
-            phone: { type: "STRING", description: "Exact recipient phone number supplied by the administrator." },
-            message: { type: "STRING", description: "Exact SMS message to send." },
+            phone: { type: "STRING", description: "Exact recipient phone number supplied by the administrator; use this or customer_name, not both." },
+            customer_name: { type: "STRING", description: "Registered customer name when the administrator asks to send to a named customer; use this or phone, not both." },
+            message: { type: "STRING", description: "Exact SMS message to send, preserving its text and line breaks." },
           },
-          required: ["phone", "message"],
+          required: ["message"],
         },
       },
     },
@@ -1467,16 +1468,47 @@ Deno.serve(async (req) => {
     let toolError: { code?: string; message?: string } | null = null;
 
     if (toolName === "send_sms") {
-      const phone = safeText(args.phone, 32);
-      const messageText = safeText(args.message, 1200);
-      const normalizedPhone = phone.replace(/[\s().-]/g, "");
-      if (!/^\+?[0-9]{7,18}$/.test(normalizedPhone) || !messageText || messageText.length > 1200) {
-        return { response: respond(400, { ok: false, error: "SMS_INPUT_INVALID" }) };
+      const rawMessage = args.message;
+      const messageText = typeof rawMessage === "string" && rawMessage.length <= 1200 ? rawMessage : "";
+      if (!messageText.trim()) {
+        return { response: respond(400, { ok: false, error: "SMS_MESSAGE_INVALID" }) };
       }
-      const expectedActionId = await deriveActionRequestId("send_sms", args);
+
+      let phone = safeText(args.phone, 32);
+      const customerName = safeText(args.customer_name, 64);
+      if (!confirmedActionRequestId && customerName) {
+        if (phone || !permissions.includes("customers:view")) {
+          return { response: respond(403, { ok: false, error: "SMS_CUSTOMER_LOOKUP_PERMISSION_REQUIRED" }) };
+        }
+        const resolved = await caller.rpc("sarah_ai_resolve_sms_recipient", { p_query: customerName });
+        if (resolved.error) {
+          return { response: respond(403, { ok: false, error: "SMS_CUSTOMER_LOOKUP_FAILED" }) };
+        }
+        const record = resolved.data && typeof resolved.data === "object" && !Array.isArray(resolved.data)
+          ? resolved.data as Record<string, unknown> : {};
+        const resolutionStatus = safeText(record.status, 32);
+        if (resolutionStatus !== "resolved") {
+          return { response: respond(409, { ok: false, error:
+            resolutionStatus === "ambiguous" ? "SMS_CUSTOMER_AMBIGUOUS"
+              : resolutionStatus === "phone_missing" ? "SMS_CUSTOMER_PHONE_MISSING"
+              : "SMS_CUSTOMER_NOT_FOUND" }) };
+        }
+        phone = safeText(record.phone, 32);
+      } else if (!confirmedActionRequestId && !phone) {
+        return { response: respond(400, { ok: false, error: "SMS_RECIPIENT_REQUIRED" }) };
+      }
+
+      const normalizedPhone = phone.replace(/[\\s().-]/g, "");
+      if (!/^\\+?[0-9]{7,18}$/.test(normalizedPhone)) {
+        return { response: respond(400, { ok: false, error: "SMS_PHONE_INVALID" }) };
+      }
+
       if (!confirmedActionRequestId) {
-        return { response: respond(428, { ok: false, error: "LOCAL_SMS_REQUIRED" }) };
+        const actionArgs = { phone: normalizedPhone, message: messageText };
+        return { response: respond(428, { ok: false, error: "LOCAL_SMS_REQUIRED", actionArgs }) };
       }
+
+      const expectedActionId = await deriveActionRequestId("send_sms", args);
       if (!suppliedLocalSmsActionResult
         || suppliedLocalSmsActionResult.actionRequestId !== expectedActionId
         || suppliedLocalSmsActionResult.submitted !== true
@@ -2835,15 +2867,16 @@ Deno.serve(async (req) => {
           const execution = await executeCapability(requestedCall.name, requestedCall.args);
           if (execution.response) {
             if (execution.response.status === 428 && requestedCall.name === "send_sms") {
+              const handoff = await execution.response.clone().json().catch(() => ({})) as Record<string, unknown>;
+              const actionArgs = handoff.actionArgs && typeof handoff.actionArgs === "object" && !Array.isArray(handoff.actionArgs)
+                ? handoff.actionArgs as Record<string, unknown>
+                : requestedCall.args;
+              const actionRequestId = await deriveActionRequestId(requestedCall.name, actionArgs);
               const pendingAction = {
-                token: await createPendingActionToken(
-                  requestedCall.name,
-                  requestedCall.args,
-                  await deriveActionRequestId(requestedCall.name, requestedCall.args),
-                ),
+                token: await createPendingActionToken(requestedCall.name, actionArgs, actionRequestId),
                 name: requestedCall.name,
-                args: requestedCall.args,
-                actionRequestId: await deriveActionRequestId(requestedCall.name, requestedCall.args),
+                args: actionArgs,
+                actionRequestId,
               };
               await checkpointTask("WAITING_CONFIRMATION", {
                 ...taskState,
