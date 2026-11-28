@@ -4557,7 +4557,7 @@ export const searchCustomersAndOrders = async (
   await ensureStoreHydrated();
   const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
   const q = query ? query.trim() : '';
-  const totalStoreCustomersCount = Array.from(customersMap.values()).filter((c) => c.isActive).length;
+  const totalStoreCustomersCount = Array.from(customersMap.values()).filter((customer) => customer?.isActive === true).length;
 
   // 1. If query is empty, return customers list (all or bounded if explicit limit passed)
   if (!q) {
@@ -4622,8 +4622,8 @@ export const searchCustomersAndOrders = async (
   const matchingCusts: CustomerEntity[] = [];
 
   for (const cust of customersMap.values()) {
-    if (!cust.isActive) continue;
-    if (!cust || typeof cust.id !== 'string' || !cust.id.trim()) continue;
+    if (!cust || cust.isActive !== true) continue;
+    if (typeof cust.id !== 'string' || !cust.id.trim()) continue;
     const code = normalizeCustomerSearchText(getCustomerCode(cust));
     const phone = normalizeCustomerSearchText(cust.phone);
     const name = normalizeCustomerSearchText(cust.name);
@@ -4650,8 +4650,8 @@ export const searchCustomersAndOrders = async (
     }
     customerResults.push({
       id: cust.id,
-      name: cust.name,
-      phone: cust.phone || '',
+      name: typeof cust.name === 'string' && cust.name.trim() ? cust.name : 'عميل غير معروف',
+      phone: typeof cust.phone === 'string' ? cust.phone : '',
       code: getCustomerCode(cust),
       currentBalanceMinor: balanceMinor,
       balanceUnavailable,
