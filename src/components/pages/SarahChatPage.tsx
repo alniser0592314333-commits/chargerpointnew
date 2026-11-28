@@ -38,6 +38,14 @@ const gazaDateKey = () => {
   const part = (name: string) => parts.find((item) => item.type === name)?.value || "";
   return `${part("year")}-${part("month")}-${part("day")}`;
 };
+const gazaDateFromTimestamp = (value?: string) => {
+  const date = value && Number.isFinite(Date.parse(value)) ? new Date(value) : new Date();
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Gaza", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (name: string) => parts.find((item) => item.type === name)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+};
+const queueConversationDate = (record: Pick<SarahInputRecord, "conversationDate" | "createdAt">) =>
+  record.conversationDate || gazaDateFromTimestamp(record.createdAt);
 const dailyConversationTitle = (date: string) => new Intl.DateTimeFormat("ar", {
   timeZone: "Asia/Gaza", weekday: "long", day: "2-digit", month: "2-digit",
 }).format(new Date(`${date}T12:00:00`));
@@ -243,7 +251,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     if (!activeAccountId || hydratedAccount !== activeAccountId || !pending.length) return;
     const missing = pending.filter((item) =>
       item.actorAccountId === activeAccountId
-      && (item.conversationDate || gazaDateKey()) === selectedDate
+      && queueConversationDate(item) === selectedDate
       && item.state !== "COMPLETED"
       && Boolean(item.text)
       && Array.isArray(item.historySnapshot)
@@ -482,7 +490,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     if (retryIntent) {
       const failedTasks = pending.filter((row) =>
         row.actorAccountId === accountId
-        && (row.conversationDate || gazaDateKey()) === selectedDate
+        && queueConversationDate(row) === selectedDate
         && row.state === "NEEDS_ATTENTION"
         && Boolean(row.text)
       ).sort((a, b) => b.sequence - a.sequence);
