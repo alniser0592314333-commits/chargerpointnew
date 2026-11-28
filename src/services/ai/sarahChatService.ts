@@ -64,7 +64,7 @@ const formatPartialProgress = (value: unknown): string | null => {
   if (groups.not_executed.length) lines.push(`لم يُنفّذ بعد: ${groups.not_executed.join("، ")}.`);
   if (groups.pending.length) lines.push(`بانتظار التنفيذ: ${groups.pending.join("، ")}.`);
   lines.push("حُفظ تقدم المهمة. عند طلب «أعد المحاولة» سأستكمل الخطوات غير المكتملة فقط، ولن أعيد الخطوات الناجحة.");
-  return lines.join("\\n");
+  return lines.join("\n");
 };
 
 export interface SarahChatResponse {
