@@ -823,3 +823,28 @@ describe("Sarah durable orchestration checkpoint contract", () => {
     expect(chatPage).toContain('transition(accountId, pendingAction.id, "READY_TO_SEND"');
   });
 });
+
+
+describe("Sarah historical task journal", () => {
+  it("loads prior task outcomes only for explicit history/failure questions", () => {
+    expect(source).toContain("const wantsHistoricalTaskStatus =");
+    expect(source).toContain('admin.rpc("sarah_ai_task_history_list"');
+    expect(source).toContain("p_exclude_request_id: requestId");
+    expect(source).toContain("AI_TASK_HISTORY_UNAVAILABLE");
+    expect(source).toContain("لا تعِد تشغيلها");
+  });
+
+  it("uses an account-scoped sanitized journal independent from expiring checkpoints", () => {
+    const journalMigration = read("supabase/migrations/20261128110000_sarah_ai_task_history_journal.sql");
+    const journalSqlTest = read("supabase/tests/sarah_ai_task_history_journal.test.sql");
+    expect(journalMigration).toContain("CREATE TABLE IF NOT EXISTS public.sarah_ai_task_history");
+    expect(journalMigration).toContain("AFTER INSERT OR UPDATE OF state, status, updated_at");
+    expect(journalMigration).toContain("public.sarah_ai_task_assert_gateway_actor(p_actor_id, p_session_id)");
+    expect(journalMigration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_task_history_list");
+    expect(journalMigration).not.toContain("raw_prompt");
+    expect(journalMigration).not.toContain("tool_arguments");
+    expect(journalSqlTest).toContain("PRIVATE CUSTOMER NAME");
+    expect(journalSqlTest).toContain("Historical journal leaked task arguments or tool results");
+    expect(journalSqlTest).toContain("Historical task journal was deleted with its resumable checkpoint");
+  });
+});
