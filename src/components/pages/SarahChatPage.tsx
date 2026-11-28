@@ -84,7 +84,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
   const [showAllConversations, setShowAllConversations] = useState(false);
   const [revealedMessageId, setRevealedMessageId] = useState<string | null>(null);
   const [swipeOffset, setSwipeOffset] = useState<{ id: string; value: number } | null>(null);
-  const swipeStartRef = useRef<{ id: string; x: number } | null>(null);
+  const swipeStartRef = useRef<{ id: string; x: number; y: number; axis: "pending" | "horizontal" | "vertical" } | null>(null);
   const swipeOffsetRef = useRef<{ id: string; value: number } | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const lastObservedTodayRef = useRef(gazaDateKey());
@@ -168,12 +168,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       document.removeEventListener("visibilitychange", observeNewDay);
     };
   }, [busy, pendingBinAction]);
-
-  useLayoutEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
-  }, [messages, hydratedDate, selectedDate]);
 
   const isCurrent = (accountId: string, operation?: number) => {
     if (!accountId || accountId !== session?.authUserId) return false;
@@ -1068,32 +1062,50 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           </div>
         </aside>
       </div>}
-      <div ref={messagesContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-1 py-2 scroll-smooth">
+      <div ref={messagesContainerRef} className="min-h-0 flex-1 flex flex-col-reverse gap-3 overflow-y-auto overscroll-contain px-1 py-2">
         {!messages.length && <p className="py-12 text-center text-sm text-gray-500">احكيلي شو بدك، وبساعدك.</p>}
-        {messages.map((message, index) => {
+        {messages.slice().reverse().map((message, index) => {
           const identity = messageIdentity(message, index);
           const revealed = revealedMessageId === identity;
           const offset = swipeOffset?.id === identity ? swipeOffset.value : 0;
           const time = messageTime(message.createdAt);
           const bubble = <div
-            onTouchStart={(event) => { swipeStartRef.current = { id: identity, x: event.touches[0]?.clientX || 0 }; }}
+            onTouchStart={(event) => {
+              const touch = event.touches[0];
+              if (!touch) return;
+              swipeStartRef.current = { id: identity, x: touch.clientX, y: touch.clientY, axis: "pending" };
+              swipeOffsetRef.current = null;
+            }}
             onTouchMove={(event) => {
               const start = swipeStartRef.current;
-              if (!start || start.id !== identity) return;
-              const delta = Math.max(-72, Math.min(72, (event.touches[0]?.clientX || start.x) - start.x));
+              const touch = event.touches[0];
+              if (!start || start.id !== identity || !touch) return;
+              const deltaX = touch.clientX - start.x;
+              const deltaY = touch.clientY - start.y;
+              if (start.axis === "pending" && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+                start.axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.2 ? "horizontal" : "vertical";
+              }
+              if (start.axis !== "horizontal") return;
+              const delta = Math.max(-72, Math.min(72, deltaX));
               swipeOffsetRef.current = { id: identity, value: delta };
               setSwipeOffset({ id: identity, value: delta });
             }}
             onTouchEnd={() => {
               const start = swipeStartRef.current;
               const moved = swipeOffsetRef.current?.id === identity ? swipeOffsetRef.current.value : 0;
-              if (start?.id === identity && Math.abs(moved) >= 24) setRevealedMessageId(identity);
+              if (start?.id === identity && start.axis === "horizontal" && Math.abs(moved) >= 24) setRevealedMessageId(identity);
               else if (start?.id === identity) setRevealedMessageId(null);
               swipeStartRef.current = null;
               swipeOffsetRef.current = null;
               setSwipeOffset(null);
             }}
-            style={{ transform: `translateX(${offset}px)`, transition: offset === 0 ? "transform 180ms ease" : "none", touchAction: "pan-y" }}
+            onTouchCancel={() => {
+              if (swipeStartRef.current?.id !== identity) return;
+              swipeStartRef.current = null;
+              swipeOffsetRef.current = null;
+              setSwipeOffset(null);
+            }}
+            style={{ transform: `translateX(${offset}px)`, transition: offset === 0 ? "transform 180ms ease" : "none", touchAction: "pan-y", willChange: offset !== 0 ? "transform" : undefined }}
             className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-7 ${message.role === "user" ? "ms-auto bg-emerald-600 text-white" : "me-auto bg-gray-100 text-gray-900 dark:bg-[#0c312b] dark:text-[#daf1de]"}`}>
             {message.text}
             {message.statusText && <div className="mt-1 text-[11px] opacity-80">{message.statusText}</div>}
