@@ -15,7 +15,7 @@ import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
 import { saveAdminQuickLoginToken, removeSavedAdminQuickLoginTokensForUser } from './services/auth/accountBiometric';
-import { isCurrentAccountSessionActive } from './services/auth/accountSessionService';
+import { isCurrentAccountSessionActive, registerCurrentAccountSession } from './services/auth/accountSessionService';
 import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import { globalSyncBridge } from './infrastructure/sync/syncBridge';
