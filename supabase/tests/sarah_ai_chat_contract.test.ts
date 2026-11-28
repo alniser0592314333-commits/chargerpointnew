@@ -835,7 +835,7 @@ describe("Sarah historical task journal", () => {
   });
 
   it("uses an account-scoped sanitized journal independent from expiring checkpoints", () => {
-    const journalMigration = read("supabase/migrations/20261128110000_sarah_ai_task_history_journal.sql");
+    const journalMigration = read("supabase/migrations/20261128120000_sarah_ai_task_history_journal.sql");
     const journalSqlTest = read("supabase/tests/sarah_ai_task_history_journal.test.sql");
     expect(journalMigration).toContain("CREATE TABLE IF NOT EXISTS public.sarah_ai_task_history");
     expect(journalMigration).toContain("AFTER INSERT OR UPDATE OF state, status, updated_at");
