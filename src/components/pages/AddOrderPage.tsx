@@ -19,7 +19,6 @@ import {
   getNextOrderNumberForDay,
   calculateDeviceItemPreviewPrice,
   createOrderWithPhase5Engine,
-  getCustomersList,
   getCustomerDetail,
   getCurrentAdminAuthorizationContext,
   useStoreSubscription,
