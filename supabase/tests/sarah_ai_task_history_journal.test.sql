@@ -11,8 +11,8 @@ BEGIN
     FROM public.sarah_ai_task_history
     WHERE auth_user_id = '10000000-0000-4000-8000-000000000001'
       AND auth_session_id = '20000000-0000-4000-8000-000000000001'
-      AND request_id = '70000000-0000-4000-8000-000000000099'
-      AND status = 'WAITING_CONFIRMATION'
+      AND request_id = '70000000-0000-4000-8000-000000000096'
+      AND status = 'FAILED'
   ) THEN
     RAISE EXCEPTION 'Retained pre-journal Sarah task was not backfilled into historical journal';
   END IF;
@@ -55,8 +55,8 @@ BEGIN
 
   v_result := public.sarah_ai_task_history_list(v_actor, v_session, 20, true, NULL);
   v_tasks := v_result -> 'tasks';
-  IF jsonb_array_length(v_tasks) <> 1 THEN
-    RAISE EXCEPTION 'Expected one failed historical task, got %', v_result;
+  IF jsonb_array_length(v_tasks) <> 2 THEN
+    RAISE EXCEPTION 'Expected the new failure plus one backfilled historical task, got %', v_result;
   END IF;
   v_steps := v_tasks -> 0 -> 'steps';
   IF jsonb_array_length(v_steps) <> 3
@@ -77,6 +77,12 @@ BEGIN
      OR v_steps -> 1 ->> 'status' <> 'failed'
      OR v_steps -> 2 ->> 'status' <> 'not_executed' THEN
     RAISE EXCEPTION 'Historical step sequence/status mismatch: %', v_steps;
+  END IF;
+  IF v_tasks -> 1 ->> 'request_id' <> '70000000-0000-4000-8000-000000000096'
+     OR v_tasks -> 1 ->> 'failed_count' <> '1'
+     OR v_tasks -> 1 -> 'steps' -> 0 ->> 'capability' <> 'lookup_customers'
+     OR v_tasks -> 1 -> 'steps' -> 0 ->> 'status' <> 'failed' THEN
+    RAISE EXCEPTION 'Pre-existing failed checkpoint was not accurately backfilled: %', v_tasks -> 1;
   END IF;
 END;
 $task_history_capture$;
@@ -113,8 +119,8 @@ BEGIN
     '20000000-0000-4000-8000-000000000001',
     20, true, NULL
   );
-  IF jsonb_array_length(v_result -> 'tasks') <> 1 THEN
-    RAISE EXCEPTION 'Historical task journal was deleted with its resumable checkpoint: %', v_result;
+  IF jsonb_array_length(v_result -> 'tasks') <> 2 THEN
+    RAISE EXCEPTION 'Historical task journal was deleted with its resumable checkpoint or leaked another account: %', v_result;
   END IF;
 END;
 $task_history_survives$;
