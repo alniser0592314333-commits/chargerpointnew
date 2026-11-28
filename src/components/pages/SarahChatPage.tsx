@@ -633,9 +633,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       }
     } catch (err) {
       if (isCurrent(accountId, operation)) {
-        setError("");
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
+        setError(offline ? "انقطع الاتصال أثناء إرسال الطلب؛ بقيت المهمة محفوظة ويمكن استكمالها عند عودة الاتصال." : partialSummary ? "" : err instanceof Error ? err.message : "تعذر تنفيذ الطلب بسبب خطأ غير معروف.");
         const failureMessages: Message[] = [
           ...baseMessages,
           {
@@ -770,7 +770,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           partialMessages.push({ role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id });
           await sarahConversationStore.saveDaily(accountId, selectedDate, partialMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
         }
-        setError("");
+        setError(offline ? "انقطع الاتصال أثناء استكمال المهمة؛ بقيت الخطوات المحفوظة كما هي." : partialSummary ? "" : err instanceof Error ? err.message : "تعذر استكمال المهمة بسبب خطأ غير معروف.");
       }
     } finally {
       if (isCurrent(accountId, operation)) { setBusy(false); await refreshQueue(accountId, operation); }
@@ -987,6 +987,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             });
           }
         } catch {}
+        setError(protectedActionConfirmed ? "" : offline ? "انقطع الاتصال أثناء التأكيد الأمني؛ تحقق من حالة العملية قبل إعادة المحاولة." : err instanceof Error ? err.message : "تعذر إكمال التأكيد الأمني.");
         setMessages((prev) => prev.map((item) => item.queueId === pendingAction.id
           ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
           : item));
