@@ -8,6 +8,12 @@ CREATE TABLE auth.sessions (
   not_after timestamptz,
   user_agent text
 );
+CREATE TABLE auth.refresh_tokens (
+  user_id text NOT NULL,
+  session_id uuid NOT NULL,
+  revoked boolean NOT NULL DEFAULT false,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE OR REPLACE FUNCTION auth.uid() RETURNS uuid
 LANGUAGE sql STABLE AS $$
   SELECT NULLIF(current_setting('request.jwt.claim.sub', true), '')::uuid
@@ -43,6 +49,10 @@ INSERT INTO auth.sessions(id,user_id,created_at,user_agent)
 VALUES
  ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001',now()-interval '1 day','Old Android session'),
  ('20000000-0000-4000-8000-000000000002','10000000-0000-4000-8000-000000000002',now()-interval '1 day','Other admin session');
+INSERT INTO auth.refresh_tokens(user_id,session_id,revoked)
+VALUES
+ ('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001',false),
+ ('10000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000002',false);
 INSERT INTO public.account_sessions(session_id,user_id,user_agent)
 VALUES
  ('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','Old Android session'),
