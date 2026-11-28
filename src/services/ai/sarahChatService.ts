@@ -120,6 +120,7 @@ export interface SarahChatResponse {
   requiresLocalSync?: boolean;
   localSyncAction?: "manual_sync";
   taskPending?: boolean;
+  confirmationApplied?: boolean;
   retryAfterMs?: number;
 }
 
@@ -365,6 +366,6 @@ export const sarahChatService = {
     if (typeof data.answer !== "string" || typeof data.modelId !== "string") {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
     }
-    return { answer: data.answer, modelId: data.modelId };
+    return { answer: data.answer, modelId: data.modelId, confirmationApplied: confirmationAction ? data.confirmationApplied === true : false };
   },
 };
