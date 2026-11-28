@@ -349,7 +349,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         p_cached_permissions_version: null,
       });
       const livePermissions = Array.isArray(permission.data?.permissions) ? permission.data.permissions as string[] : [];
-      const liveRole = String(permission.data?.role || "").trim().toUpperCase().replace(/\\s+/g, "_");
+      const liveRole = String(permission.data?.role || "").trim().toUpperCase().replace(/\s+/g, "_");
       if (permission.error || (liveRole !== "SUPER_ADMIN" && !livePermissions.includes("customers:send-sms"))) {
         throw new Error("SMS_PERMISSION_REQUIRED");
       }
