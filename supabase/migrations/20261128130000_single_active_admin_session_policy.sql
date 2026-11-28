@@ -82,8 +82,7 @@ BEGIN
     AND rt.revoked IS NOT TRUE;
 
   UPDATE auth.sessions s
-  SET not_after = LEAST(COALESCE(s.not_after, now()), now()),
-      updated_at = now()
+  SET not_after = LEAST(COALESCE(s.not_after, now()), now())
   WHERE s.user_id = NEW.user_id
     AND s.id <> NEW.session_id
     AND (s.not_after IS NULL OR s.not_after > now());
