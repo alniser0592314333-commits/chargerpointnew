@@ -799,6 +799,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
   const openDailyConversation = (date: string) => {
     if (busy || pendingBinAction) return;
     setDrawerOpen(false);
+    if (date === selectedDate) return;
     setRevealedMessageId(null);
     setSwipeOffset(null);
     swipeOffsetRef.current = null;
