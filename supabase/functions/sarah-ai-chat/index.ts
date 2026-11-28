@@ -1469,8 +1469,8 @@ Deno.serve(async (req) => {
     if (toolName === "send_sms") {
       const phone = safeText(args.phone, 32);
       const messageText = safeText(args.message, 1200);
-      const normalizedPhone = phone.replace(/[\\s().-]/g, "");
-      if (!/^\\+?[0-9]{7,18}$/.test(normalizedPhone) || !messageText || messageText.length > 1200) {
+      const normalizedPhone = phone.replace(/[\s().-]/g, "");
+      if (!/^\+?[0-9]{7,18}$/.test(normalizedPhone) || !messageText || messageText.length > 1200) {
         return { response: respond(400, { ok: false, error: "SMS_INPUT_INVALID" }) };
       }
       const expectedActionId = await deriveActionRequestId("send_sms", args);
