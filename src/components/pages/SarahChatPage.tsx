@@ -26,6 +26,7 @@ type PendingBinAction = {
   id: string;
   correlationId: string;
   text: string;
+  createdAt?: string;
   historySnapshot: { role: "user" | "assistant"; text: string }[];
   baseMessages: Message[];
   pendingAction?: SarahPendingBinAction;
@@ -287,6 +288,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       id: record.id,
       correlationId: record.correlationId,
       text: record.text,
+      createdAt: record.createdAt,
       historySnapshot,
       baseMessages,
       pendingAction: record.pendingBinAction,
@@ -497,6 +499,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     setBusy(true);
     const id = crypto.randomUUID();
     const correlationId = crypto.randomUUID();
+    const messageCreatedAt = new Date().toISOString();
     try {
       await sarahInputQueue.enqueue({
         id, actorAccountId: accountId, deviceId: "web-client", kind: "text",
@@ -511,7 +514,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       const optimisticMessages: Message[] = [...baseMessages, {
         role: "user",
         text: clean,
-        createdAt: new Date().toISOString(),
+        createdAt: messageCreatedAt,
         status: navigator.onLine ? "sending" : "offline",
         queueId: id,
         statusText: navigator.onLine ? "جارٍ الإرسال" : "بانتظار عودة الاتصال",
@@ -526,7 +529,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         const offlineMessages = [...baseMessages, {
           role: "user" as const,
           text: clean,
-          createdAt: new Date().toISOString(),
+          createdAt: messageCreatedAt,
           status: "offline" as const,
           queueId: id,
           statusText: "بانتظار عودة الاتصال",
@@ -565,7 +568,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             lastErrorCode: response.binError || "BIN_REQUIRED",
             pendingBinAction: response.pendingAction,
           });
-          setPendingBinAction({ id, correlationId, text: clean, historySnapshot, baseMessages, pendingAction: response.pendingAction });
+          setPendingBinAction({ id, correlationId, text: clean, createdAt: messageCreatedAt, historySnapshot, baseMessages, pendingAction: response.pendingAction });
           setMessages((prev) => prev.map((item) => item.queueId === id
             ? { ...item, status: "waiting_confirmation", statusText: "بانتظار التأكيد الأمني" }
             : item));
@@ -577,7 +580,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
         const completedMessages = [
           ...baseMessages,
-          { role: "user" as const, text: clean, createdAt: new Date().toISOString(), queueId: id },
+          { role: "user" as const, text: clean, createdAt: messageCreatedAt, queueId: id },
           { role: "assistant" as const, text: response.answer, createdAt: new Date().toISOString() },
         ];
         await sarahConversationStore.saveDaily(accountId, selectedDate, completedMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate));
@@ -605,7 +608,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           {
             role: "user" as const,
             text: clean,
-            createdAt: new Date().toISOString(),
+            createdAt: messageCreatedAt,
             status: offline ? "offline" as const : "failed" as const,
             queueId: id,
             statusText: offline ? "بانتظار عودة الاتصال" : "توقفت قبل وصول الرد النهائي؛ يمكن استكمالها من آخر نقطة محفوظة",
@@ -686,6 +689,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           id: record.id,
           correlationId: record.correlationId,
           text: record.text,
+          createdAt: record.createdAt,
           historySnapshot: retryHistory,
           baseMessages,
           pendingAction: response.pendingAction,
@@ -891,7 +895,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       );
       const transcriptBeforeAnswer = alreadyHasUserMessage
         ? pendingAction.baseMessages
-        : [...pendingAction.baseMessages, { role: "user" as const, text: pendingAction.text, createdAt: new Date().toISOString() }];
+        : [...pendingAction.baseMessages, { role: "user" as const, text: pendingAction.text, createdAt: pendingAction.createdAt || new Date().toISOString() }];
       const completedMessages = [
         ...transcriptBeforeAnswer.map((item) => item.queueId === pendingAction.id
           ? { ...item, status: undefined, statusText: undefined }
