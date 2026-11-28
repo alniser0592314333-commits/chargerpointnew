@@ -142,7 +142,7 @@ export const sarahConversationStore = {
     try {
       return await transactionResult(db, [DAILY_STORE], "readonly", (tx, resolve) => {
         const request = tx.objectStore(DAILY_STORE).index("account_date")
-          .getAll(IDBKeyRange.bound([accountId, ""], [accountId, "\\uffff"]));
+          .getAll(IDBKeyRange.bound([accountId, ""], [accountId, "\uffff"]));
         request.onsuccess = () => resolve((request.result as SarahDailyConversation[]).sort((a, b) => b.date.localeCompare(a.date)));
       });
     } finally { db.close(); }
