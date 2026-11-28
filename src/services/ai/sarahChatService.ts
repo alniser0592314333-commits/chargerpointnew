@@ -384,7 +384,6 @@ export const sarahChatService = {
         MUTATION_DEFERRED_UNTIL_READS_COMPLETE: "أجلت سارة التعديل حتى تتحقق من بيانات العميل أو الطلب المطلوبة أولًا.",
         PENDING_ACTION_NOT_FOUND: "لم تعد خطوة التأكيد الأمني موجودة في قائمة المهام الحالية؛ يلزم فحص حالة العملية.",
         BIN_CONFIRMATION_NOT_ACKNOWLEDGED: "لم يصل تأكيد موثوق من الخادم على نجاح عملية BIN؛ لم تعتبر سارة العملية ناجحة.",
-        AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION: "تم تنفيذ العملية المحمية، لكن استكمال بقية المهمة توقف. المتابعة ستستأنف من نقطة الحفظ دون إعادة العملية.",
         ACCOUNT_CHANGED: "تغير الحساب أثناء تنفيذ العملية؛ أوقفت سارة الطلب لمنع استخدام جلسة حساب آخر.",
         SYNC_MANAGE_PERMISSION_REQUIRED: "حسابك لا يملك صلاحية إدارة المزامنة.",
 
