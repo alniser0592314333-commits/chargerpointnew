@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, Sparkles, AlertCircle, Menu, X, LogOut, MessageSquare } from "lucide-react";
+import { ArrowUp, Sparkles, AlertCircle, X, LogOut, MessageSquare } from "lucide-react";
 import { sarahChatService, SarahPartialTaskError, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
 import { sendSmsUsingSystemDefaultSim } from "../../services/nativeSms";
 import { UserSession } from "../../services/auth/authService";
@@ -865,6 +865,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     }
 
     const operation = accountScopeRef.current.generation;
+    let protectedActionConfirmed = false;
     setBusy(true);
     setError("");
     setBinError("");
@@ -901,8 +902,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         return;
       }
 
-      // The protected operation has succeeded. Remove the secure prompt now,
-      // then resume using the exact original request identity (same text/history).
+      // The server has acknowledged the protected mutation. From this point on,
+      // never show the same PIN prompt again: only the saved task continuation may run.
+      protectedActionConfirmed = true;
+      setPendingBinAction(null);
+      setBinValue("");
+      setBinError("");
       await sarahInputQueue.transition(accountId, pendingAction.id, "READY_TO_SEND", {
         pendingBinAction: undefined,
         lastErrorCode: undefined,
@@ -980,6 +985,22 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         setPendingBinAction(null);
         setBinValue("");
         setBinError("");
+        if (protectedActionConfirmed) {
+          const notice = "تم تنفيذ العملية بعد التأكيد الأمني. تعذر فقط استكمال الرد أو بقية المهمة؛ لن أعيد تنفيذ العملية الناجحة عند المتابعة.";
+          setMessages((prev) => [...prev.filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)), {
+            role: "assistant", text: notice, createdAt: new Date().toISOString(), queueId: pendingAction.id,
+          }]);
+          try {
+            const rows = await sarahInputQueue.list(accountId);
+            const current = rows.find((row) => row.id === pendingAction.id);
+            if (current && current.state !== "NEEDS_ATTENTION") {
+              await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
+                pendingBinAction: undefined,
+                lastErrorCode: "AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION",
+              });
+            }
+          } catch {}
+        }
       }
     } finally {
       setBinValue("");
@@ -999,7 +1020,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           <span className="rounded-2xl bg-emerald-100 p-3 text-emerald-700 dark:bg-[#0c312b] dark:text-[#daf1de]"><Sparkles className="h-5 w-5" /></span>
           <span className="font-bold text-lg">سارة</span>
         </button>
-        <button type="button" onClick={() => setDrawerOpen(true)} aria-label="قائمة المحادثات" className="rounded-xl p-3 text-gray-600 hover:bg-gray-100 dark:text-[#daf1de] dark:hover:bg-[#0c312b]"><Menu className="h-5 w-5" /></button>
       </header>
       {drawerOpen && <div className="fixed inset-0 z-[100] bg-black/45" onClick={() => setDrawerOpen(false)}>
         <aside dir="rtl" className="absolute inset-y-0 right-0 flex w-[min(88vw,360px)] flex-col border-l border-gray-200 bg-white p-4 shadow-2xl dark:border-[#123832] dark:bg-[#061f1c]" onClick={(event) => event.stopPropagation()}>
@@ -1020,9 +1040,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             {!dailyConversations.length && <p className="px-2 py-5 text-center text-xs text-gray-500">لا توجد محادثات سابقة.</p>}
             {dailyConversations.length > 7 && <button type="button" onClick={() => setShowAllConversations((value) => !value)} className="w-full rounded-xl px-3 py-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-[#0c312b]">{showAllConversations ? "عرض آخر 7 أيام" : "إظهار المزيد"}</button>}
           </div>
-          <div className="mt-4 border-t border-gray-200 pt-3 dark:border-[#123832]">
-            <button type="button" onClick={() => { setDrawerOpen(false); onExit?.(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/20">
-              <LogOut className="h-4 w-4" /> خروج من سارة
+          <div className="mt-4 flex justify-center border-t border-gray-200 pt-4 dark:border-[#123832]">
+            <button type="button" onClick={() => { setDrawerOpen(false); onExit?.(); }} className="inline-flex min-w-36 items-center justify-center gap-2 rounded-full border border-red-200 px-6 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30">
+              <LogOut className="h-4 w-4" /> خروج
             </button>
           </div>
         </aside>
