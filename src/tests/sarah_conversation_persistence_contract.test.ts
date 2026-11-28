@@ -78,7 +78,8 @@ describe("Sarah daily conversation persistence", () => {
   it("opens Sarah as a standalone authenticated workspace and exits back to the app home", () => {
     expect(app).toContain('onExit={() => navigate("/app", true)}');
     expect(app).toContain("parseRoute(currentPath).pathname === '/app/sarah'");
-    expect(page).toContain("خروج من سارة");
+    expect(page).toContain("خروج");
+    expect(page).not.toContain("خروج من سارة");
     expect(page).toContain("فتح محادثات سارة");
   });
 
