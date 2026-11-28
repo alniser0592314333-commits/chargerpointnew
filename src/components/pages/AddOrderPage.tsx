@@ -141,44 +141,57 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
   // Ref for scrolling newest device into view
   const lastDeviceRef = useRef<HTMLDivElement | null>(null);
 
-  // Perform targeted customer search via Phase 5 repository context
+  // Search is intentionally failure-isolated: a single customer's balance
+  // lookup must never take down the whole add-order screen or hide other matches.
   useEffect(() => {
     let active = true;
-    if (customerMode === 'existing' && searchQuery.trim()) {
+    const query = searchQuery.trim();
+    if (customerMode === 'existing' && query) {
       const loadResults = async () => {
-        const results = await searchCustomers(searchQuery);
-        if (!canOverrideDebtLimit) {
-          if (active) setSearchResults(results);
-          return;
-        }
+        try {
+          const results = await searchCustomers(query);
+          if (!active) return;
 
-        // The existing customer-list path computes each matching customer's
-        // effective balance in one batch, avoiding one detail lookup per result.
-        const customersWithBalances = await getCustomersList(searchQuery);
-        const balanceById = new Map(customersWithBalances.map((customer) => [customer.id, customer.currentBalanceMinor]));
-        const annotatedResults: UICustomerSearchResult[] = await Promise.all(results.map(async (customer) => {
-          let balance = balanceById.get(customer.id);
-          // searchCustomers also supports internal-ID searches; that identifier is
-          // intentionally not part of the general customer-list text search.
-          if (balance === undefined) {
-            const detail = await getCustomerDetail(customer.id);
-            balance = detail?.currentBalanceMinor;
+          if (!canOverrideDebtLimit || results.length === 0) {
+            setSearchResults(results);
+            return;
           }
-          return {
-            ...customer,
-            isOverDebtLimit: balance !== undefined
-              ? !checkDebtLimit(balance, customer.debtLimitMinor, false)
-              : false,
-          };
-        }));
-        if (active) setSearchResults(annotatedResults);
+
+          // Resolve privileged debt warnings independently per customer. A failed
+          // balance read degrades only that warning; it must not reject the list.
+          const annotatedResults = await Promise.all(results.map(async (customer): Promise<UICustomerSearchResult> => {
+            try {
+              const detail = await getCustomerDetail(customer.id);
+              const balance = detail?.currentBalanceMinor;
+              return {
+                ...customer,
+                isOverDebtLimit: balance !== undefined
+                  ? !checkDebtLimit(balance, customer.debtLimitMinor, false)
+                  : false,
+              };
+            } catch (error) {
+              console.warn('Unable to load customer balance for add-order search:', customer.id, error);
+              return { ...customer, isOverDebtLimit: false };
+            }
+          }));
+
+          if (active) setSearchResults(annotatedResults);
+        } catch (error) {
+          console.error('Add-order customer search failed:', error);
+          if (active) {
+            setSearchResults([]);
+            setErrorMessage(locale === 'ar'
+              ? 'تعذّر تحميل نتائج البحث. حاول مرة أخرى.'
+              : 'Could not load search results. Please try again.');
+          }
+        }
       };
       void loadResults();
     } else {
       setSearchResults([]);
     }
     return () => { active = false; };
-  }, [searchQuery, customerMode, canOverrideDebtLimit]);
+  }, [searchQuery, customerMode, canOverrideDebtLimit, locale]);
 
   // Keep the selected customer's pricing inputs fresh while this form remains open.
   // The store subscription is local-only: it reacts to sync deltas without polling Supabase.
