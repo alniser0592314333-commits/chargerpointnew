@@ -843,6 +843,11 @@ describe("Sarah historical task journal", () => {
     expect(journalMigration).toContain("public.sarah_ai_task_assert_gateway_actor(p_actor_id, p_session_id)");
     expect(journalMigration).toContain("WHERE auth_user_id = p_actor_id");
     expect(journalMigration).toContain("auth_session_id uuid NOT NULL");
+    const backfillMigration = read("supabase/migrations/20261128083000_sarah_ai_task_history_backfill.sql");
+    const backfillFixture = read("supabase/tests/sarah_ai_task_history_backfill_fixture.test.sql");
+    expect(backfillMigration).toContain("SET updated_at = task.updated_at");
+    expect(backfillFixture).toContain("pre_journal_failure");
+    expect(journalSqlTest).toContain("Pre-existing failed checkpoint was not accurately backfilled");
     expect(journalMigration).toContain("GRANT EXECUTE ON FUNCTION public.sarah_ai_task_history_list");
     expect(journalMigration).not.toContain("raw_prompt");
     expect(journalMigration).not.toContain("tool_arguments");
