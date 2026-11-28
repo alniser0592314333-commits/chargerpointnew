@@ -477,7 +477,30 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
   const send = async () => {
     const accountId = session?.authUserId || null;
     const clean = text.trim();
-    if (!clean || busy || pendingBinAction || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId) return;
+    if (!clean || busy || pendingBinAction || !canUse || !accountId || !isCurrent(accountId) || hydratedAccount !== accountId || hydratedDate !== selectedDate) return;
+    const retryIntent = /^(?:أعد\s*المحاولة|اعِد\s*المحاولة|اعد\s*المحاولة|كرر\s*المحاولة|retry|كمل|تابع)[.!؟\s]*$/iu.test(clean);
+    if (retryIntent) {
+      const failedTasks = pending.filter((row) =>
+        row.actorAccountId === accountId
+        && (row.conversationDate || gazaDateKey()) === selectedDate
+        && row.state === "NEEDS_ATTENTION"
+        && Boolean(row.text)
+      ).sort((a, b) => b.sequence - a.sequence);
+      if (failedTasks.length === 1) {
+        if (!navigator.onLine) {
+          setError("يلزم الاتصال بالإنترنت لاستكمال المهمة السابقة من آخر نقطة محفوظة.");
+          return;
+        }
+        setText("");
+        setError("");
+        void retryQueued(failedTasks[0]);
+        return;
+      }
+      if (failedTasks.length > 1) {
+        setError("توجد أكثر من مهمة متوقفة في محادثة هذا اليوم. اختر زر «إعادة المحاولة» بجانب المهمة المقصودة حتى لا أستأنف مهمة غير صحيحة.");
+        return;
+      }
+    }
     if (/\bBIN\b\s*[:：]?\s*\d{4,32}/i.test(clean)) {
       setText("");
       setError("لا ترسل رمز BIN داخل المحادثة؛ أدخله فقط في خانة التأكيد الأمني.");
