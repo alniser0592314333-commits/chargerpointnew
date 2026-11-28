@@ -646,12 +646,14 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             queueId: id,
             statusText: offline ? "بانتظار عودة الاتصال" : partialSummary ? "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" : "توقفت قبل وصول الرد النهائي؛ يمكن استكمالها من آخر نقطة محفوظة",
           },
-          ...(partialSummary ? [{
+          {
             role: "assistant" as const,
-            text: partialSummary,
+            text: partialSummary || (offline
+              ? "انقطع الاتصال أثناء إرسال الطلب؛ بقيت المهمة محفوظة ويمكن استكمالها عند عودة الاتصال."
+              : err instanceof Error ? err.message : "تعذر تنفيذ الطلب بسبب خطأ غير معروف."),
             createdAt: new Date().toISOString(),
             queueId: id,
-          }] : []),
+          },
         ];
         setMessages(failureMessages);
         await sarahConversationStore.saveDaily(accountId, selectedDate, failureMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
@@ -755,22 +757,18 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         try { await sarahInputQueue.transition(accountId, record.id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
         const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
-        setMessages((prev) => {
-          const updated = prev.map((item) => item.queueId === record.id && item.role === "user"
+        const failureExplanation = partialSummary || (offline
+          ? "انقطع الاتصال أثناء استكمال المهمة؛ بقيت الخطوات المحفوظة كما هي."
+          : err instanceof Error ? err.message : "تعذر استكمال المهمة بسبب خطأ غير معروف.");
+        const failureMessages = [
+          ...messages.map((item) => item.queueId === record.id && item.role === "user"
             ? { ...item, status: offline ? "offline" as const : "failed" as const, statusText: offline ? "بانتظار عودة الاتصال" : partialSummary ? "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" : "فشلت المهمة" }
-            : item).filter((item) => !(item.role === "assistant" && item.queueId === record.id));
-          return partialSummary ? [...updated, { role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id }] : updated;
-        });
-        if (partialSummary) {
-          const partialMessages = messages
-            .map((item) => item.queueId === record.id && item.role === "user"
-              ? { ...item, status: "failed" as const, statusText: "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" }
-              : item)
-            .filter((item) => !(item.role === "assistant" && item.queueId === record.id));
-          partialMessages.push({ role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id });
-          await sarahConversationStore.saveDaily(accountId, selectedDate, partialMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
-        }
-        setError(offline ? "انقطع الاتصال أثناء استكمال المهمة؛ بقيت الخطوات المحفوظة كما هي." : partialSummary ? "" : err instanceof Error ? err.message : "تعذر استكمال المهمة بسبب خطأ غير معروف.");
+            : item).filter((item) => !(item.role === "assistant" && item.queueId === record.id)),
+          { role: "assistant" as const, text: failureExplanation, createdAt: new Date().toISOString(), queueId: record.id },
+        ];
+        setMessages(failureMessages);
+        await sarahConversationStore.saveDaily(accountId, selectedDate, failureMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
+        setError("");
       }
     } finally {
       if (isCurrent(accountId, operation)) { setBusy(false); await refreshQueue(accountId, operation); }
@@ -987,10 +985,23 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             });
           }
         } catch {}
-        setError(protectedActionConfirmed ? "" : offline ? "انقطع الاتصال أثناء التأكيد الأمني؛ تحقق من حالة العملية قبل إعادة المحاولة." : err instanceof Error ? err.message : "تعذر إكمال التأكيد الأمني.");
-        setMessages((prev) => prev.map((item) => item.queueId === pendingAction.id
-          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
-          : item));
+        const confirmationFailure = protectedActionConfirmed
+          ? "تم تنفيذ العملية بعد التأكيد الأمني. تعذر فقط استكمال الرد أو بقية المهمة؛ لن أعيد تنفيذ العملية الناجحة عند المتابعة."
+          : offline
+            ? "انقطع الاتصال أثناء التأكيد الأمني؛ تحقق من حالة العملية قبل إعادة المحاولة."
+            : err instanceof Error ? err.message : "تعذر إكمال التأكيد الأمني.";
+        setMessages((prev) => [
+          ...prev.map((item) => item.queueId === pendingAction.id
+            ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
+            : item).filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)),
+          { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
+        ]);
+        await sarahConversationStore.saveDaily(accountId, selectedDate, [
+          ...pendingAction.baseMessages,
+          { role: "user", text: pendingAction.text, createdAt: pendingAction.createdAt, queueId: pendingAction.id, status: "failed" },
+          { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
+        ], conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
+        setError("");
         setPendingBinAction(null);
         setBinValue("");
         setBinError("");
