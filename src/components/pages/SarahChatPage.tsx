@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle } from "lucide-react";
 import { sarahChatService, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
+import { sendSmsUsingSystemDefaultSim } from "../../services/nativeSms";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
 import { sarahInputQueue, SarahInputRecord } from "../../application/ai/sarahInputQueue";
@@ -279,7 +280,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
     onProgress?: () => Promise<void>,
   ) => {
     const localSyncContext = await collectLocalSyncContext();
-    let continuationContext: { localSyncContext?: SarahLocalSyncContext; localSyncActionResult?: SarahLocalSyncActionResult } =
+    let continuationContext: { localSyncContext?: SarahLocalSyncContext; localSyncActionResult?: SarahLocalSyncActionResult; localSmsActionResult?: { actionRequestId: string; submitted: boolean; parts?: number; subscriptionId?: number; errorCode?: string } } =
       localSyncContext ? { localSyncContext } : {};
     let response = await sarahChatService.send(
       message,
@@ -337,6 +338,48 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         resumeTask,
       );
       if (response.requiresLocalSync) throw new Error("LOCAL_SYNC_HANDOFF_LOOP");
+    }
+    if (response.requiresLocalSms && response.localSmsAction) {
+      if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
+      const action = response.localSmsAction;
+      const phone = typeof action.args.phone === "string" ? action.args.phone.trim() : "";
+      const messageText = typeof action.args.message === "string" ? action.args.message.trim() : "";
+      if (!phone || !messageText) throw new Error("SMS_ACTION_ARGUMENTS_INVALID");
+      const permission = await invokeSupabaseRpc<Record<string, unknown>>("sarah_ai_get_chat_access_context", {
+        p_cached_permissions_version: null,
+      });
+      const livePermissions = Array.isArray(permission.data?.permissions) ? permission.data.permissions as string[] : [];
+      const liveRole = String(permission.data?.role || "").toUpperCase();
+      if (permission.error || (liveRole !== "SUPER_ADMIN" && !livePermissions.includes("customers:send-sms"))) {
+        throw new Error("SMS_PERMISSION_REQUIRED");
+      }
+      if (!isCurrent(accountId)) throw new Error("ACCOUNT_CHANGED");
+      const storageKey = `cp-sarah-sms:${action.actionRequestId}`;
+      let cached: { state?: string; parts?: number; subscriptionId?: number } | null = null;
+      try { cached = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { cached = null; }
+      let localSmsActionResult: { actionRequestId: string; submitted: boolean; parts?: number; subscriptionId?: number; errorCode?: string };
+      if (cached?.state === "submitted") {
+        localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: true, parts: cached.parts, subscriptionId: cached.subscriptionId };
+      } else if (cached?.state === "started") {
+        // A crash after invoking Android but before recording its result is uncertain.
+        // Never resend automatically: that could duplicate a billable SMS.
+        localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: false, errorCode: "SMS_SUBMISSION_UNCERTAIN" };
+      } else {
+        try {
+          localStorage.setItem(storageKey, JSON.stringify({ state: "started", at: new Date().toISOString() }));
+          const nativeResult = await sendSmsUsingSystemDefaultSim(phone, messageText);
+          localStorage.setItem(storageKey, JSON.stringify({ state: "submitted", parts: nativeResult.parts, subscriptionId: nativeResult.subscriptionId, at: new Date().toISOString() }));
+          localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: true, parts: nativeResult.parts, subscriptionId: nativeResult.subscriptionId };
+        } catch (smsError) {
+          localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: false, errorCode: smsError instanceof Error ? smsError.message.slice(0, 80) : "SMS_SUBMISSION_FAILED" };
+          try { localStorage.setItem(storageKey, JSON.stringify({ state: "failed", at: new Date().toISOString() })); } catch { /* best effort */ }
+        }
+      }
+      continuationContext = { ...continuationContext, localSmsActionResult };
+      response = await sarahChatService.send(
+        message, accountId, history, correlationId, bin, continuationContext, action, false,
+      );
+      if (response.requiresLocalSms) throw new Error("LOCAL_SMS_HANDOFF_LOOP");
     }
     if (isCurrent(accountId)) onAccepted?.();
     while (response.taskPending) {
