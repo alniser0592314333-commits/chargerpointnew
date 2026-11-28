@@ -53,6 +53,7 @@ import { groupCustomerFinancialHistoryByOrder, groupHomeFinancialActivitiesByOrd
 import { QRDesignConfig, QRDesignType } from '../qr/types';
 import { resetActiveQrDesign, setActiveQrDesign } from '../qr/defaultDesigns';
 import { normalizeCustomerSearchText } from '../../utils/customerSearch';
+import { projectOrderSearchResult } from '../../utils/orderSearchProjection';
 import { mergeCustomerRemoteDelta } from '../../utils/customerRemoteMerge';
 
 const isBrowserOffline = (): boolean =>
@@ -140,33 +141,37 @@ export const UI_DEVICE_NAME_MAP: Record<string, { ar: string; en: string }> = {
 };
 
 export const getItemLocalizedDeviceName = (
-  deviceTypeIdOrName?: string,
+  deviceTypeIdOrName?: unknown,
   locale: Locale = 'ar',
-  fallbackSnapshot?: string
+  fallbackSnapshot?: unknown
 ): string => {
-  if (!deviceTypeIdOrName && !fallbackSnapshot) return locale === 'en' ? 'Device' : 'جهاز';
-  
-  if (deviceTypeIdOrName) {
-    const dev = devicesMap.get(deviceTypeIdOrName);
+  // Older local snapshots can contain null/object values in text columns.
+  // Never return a non-string React child from this presentation boundary.
+  const safeDeviceValue = typeof deviceTypeIdOrName === 'string' ? deviceTypeIdOrName.trim() : '';
+  const safeFallback = typeof fallbackSnapshot === 'string' ? fallbackSnapshot.trim() : '';
+  if (!safeDeviceValue && !safeFallback) return locale === 'en' ? 'Device' : 'جهاز';
+
+  if (safeDeviceValue) {
+    const dev = devicesMap.get(safeDeviceValue);
     if (dev) {
       if (locale === 'en') {
         return dev.nameEn?.trim() || UI_DEVICE_LOCALIZATIONS[dev.id]?.en || UI_DEVICE_NAME_MAP[dev.name]?.en || dev.name;
       }
       return dev.nameAr?.trim() || UI_DEVICE_LOCALIZATIONS[dev.id]?.ar || UI_DEVICE_NAME_MAP[dev.name]?.ar || dev.name;
     }
-    const byId = UI_DEVICE_LOCALIZATIONS[deviceTypeIdOrName];
+    const byId = UI_DEVICE_LOCALIZATIONS[safeDeviceValue];
     if (byId) return locale === 'en' ? byId.en : byId.ar;
-    const byName = UI_DEVICE_NAME_MAP[deviceTypeIdOrName];
+    const byName = UI_DEVICE_NAME_MAP[safeDeviceValue];
     if (byName) return locale === 'en' ? byName.en : byName.ar;
   }
 
-  if (fallbackSnapshot) {
-    const byName = UI_DEVICE_NAME_MAP[fallbackSnapshot];
+  if (safeFallback) {
+    const byName = UI_DEVICE_NAME_MAP[safeFallback];
     if (byName) return locale === 'en' ? byName.en : byName.ar;
-    return fallbackSnapshot;
+    return safeFallback;
   }
 
-  return deviceTypeIdOrName || (locale === 'en' ? 'Device' : 'جهاز');
+  return safeDeviceValue || (locale === 'en' ? 'Device' : 'جهاز');
 };
 
 // Global local Database initialization
@@ -1152,22 +1157,23 @@ const getCustomerCode = (cust: CustomerEntity): string => {
     'cust-6': 'R9W4',
   };
 
+  // Legacy local snapshots can contain partially shaped rows. A missing ID
+  // cannot be used to create/select a customer, so never dereference it here.
+  const customerId = typeof cust?.id === 'string' ? cust.id.trim() : '';
+  if (!customerId) return '----';
+
   // Canonical customer code: the same 4-character prefix used by the
-  // PostgreSQL derive_customer_code() RPC. This prevents a customer from
-  // receiving a different code depending on whether the UI or server
-  // generated it.
-  const compactUuid = String(cust.id || '').replace(/-/g, '');
+  // PostgreSQL derive_customer_code() RPC.
+  const compactUuid = customerId.replace(/-/g, '');
   if (/^[0-9a-f]{32}$/i.test(compactUuid)) {
     return compactUuid.slice(0, 4).toUpperCase();
   }
 
-  // Legacy/non-UUID records may still exist in old local snapshots.
-  // Keep their historical stable mapping without affecting canonical UUID data.
-  if (codeMap[cust.id]) return codeMap[cust.id];
+  if (codeMap[customerId]) return codeMap[customerId];
 
   let hash = 0;
-  for (let i = 0; i < cust.id.length; i++) {
-    hash = (hash << 5) - hash + cust.id.charCodeAt(i);
+  for (let i = 0; i < customerId.length; i++) {
+    hash = (hash << 5) - hash + customerId.charCodeAt(i);
     hash |= 0;
   }
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -4110,6 +4116,18 @@ const buildPaymentProjectionIndexes = (
   }
 
   for (const item of effectiveItemsMap.values()) {
+    // A malformed legacy cache entry must not take down every order/day view.
+    // Ignore rows that cannot be associated with a real order; valid historical
+    // items continue through the existing financial projection unchanged.
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      typeof item.orderId !== 'string' ||
+      !item.orderId.trim() ||
+      typeof item.id !== 'string' ||
+      !item.id.trim()
+    ) continue;
+
     let orderItems = itemsByOrder.get(item.orderId);
     if (!orderItems) {
       orderItems = [];
@@ -4151,10 +4169,12 @@ const buildPaymentProjectionIndexes = (
 
   const orderSequenceById = new Map<string, number>();
   for (const order of effectiveOrdersMap.values()) {
+    if (!order || typeof order.id !== 'string' || !order.id.trim()) continue;
     orderSequenceById.set(order.id, Number(order.internalSequence ?? 0));
   }
   const itemSequenceById = new Map<string, number>();
   for (const item of effectiveItemsMap.values()) {
+    if (!item || typeof item.id !== 'string' || !item.id.trim()) continue;
     itemSequenceById.set(item.id, Number(item.itemSequence ?? 0));
   }
 
@@ -4384,7 +4404,12 @@ export const getOrdersForDay = async (
   // Number integrity is read-only here. Hydration and page rendering must never repair numbering.
   const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
 
-  const allOrders = Array.from(effectiveOrdersMap.values()).filter((o) => isSameDayId(o.dayId, dayId));
+  const allOrders = Array.from(effectiveOrdersMap.values()).filter((order) =>
+    order &&
+    typeof order.id === 'string' && order.id.trim().length > 0 &&
+    typeof order.dayId === 'string' &&
+    isSameDayId(order.dayId, dayId)
+  );
   const indexes = buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
   const customerAllocationMaps = new Map<
     string,
@@ -4393,47 +4418,60 @@ export const getOrdersForDay = async (
 
   const res: UIDayOrderDetail[] = [];
   for (const ord of allOrders) {
-    const cust = customersMap.get(ord.customerId);
-    if (cust && !customerAllocationMaps.has(cust.id)) {
+    const cust = typeof ord.customerId === 'string' ? customersMap.get(ord.customerId) : undefined;
+    const safeCustomerId = cust && typeof cust.id === 'string' ? cust.id : '';
+    if (safeCustomerId && !customerAllocationMaps.has(safeCustomerId)) {
       customerAllocationMaps.set(
-        cust.id,
-        computeCustomerOrderPaymentStatuses(cust.id, effectiveOrdersMap, effectiveItemsMap, indexes)
+        safeCustomerId,
+        computeCustomerOrderPaymentStatuses(safeCustomerId, effectiveOrdersMap, effectiveItemsMap, indexes)
       );
     }
 
-    const alloc = cust ? customerAllocationMaps.get(cust.id)?.get(ord.id) : undefined;
+    const alloc = safeCustomerId ? customerAllocationMaps.get(safeCustomerId)?.get(ord.id) : undefined;
     const paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' =
       ord.status === 'cancelled'
         ? 'UNPAID'
         : (alloc?.paymentStatus || 'UNPAID');
 
-    const allOrderItems = indexes.itemsByOrder.get(ord.id) || [];
-    const orderItems = allOrderItems.filter((i) => i.status !== 'cancelled');
-    const projectedStatus = calculateOrderProjection(allOrderItems, ord.status);
+    const allOrderItems = (indexes.itemsByOrder.get(ord.id) || []).filter((item) =>
+      item && typeof item === 'object'
+    );
+    const orderItems = allOrderItems.filter((item) => item.status !== 'cancelled');
+    const rawStatus = typeof ord.status === 'string' ? ord.status : 'pending';
+    const fallbackStatus = (['pending', 'charging', 'delivered', 'cancelled'].includes(rawStatus)
+      ? rawStatus
+      : 'pending') as OrderStatus;
+    const projectedStatus = calculateOrderProjection(allOrderItems, fallbackStatus);
 
-    const uiItems: UIOrderDeviceItem[] = orderItems.map((i) => {
-      const devName = getItemLocalizedDeviceName(i.deviceTypeId, locale, i.deviceNameSnapshot);
+    const uiItems: UIOrderDeviceItem[] = orderItems
+      .filter((item) => typeof item.id === 'string' && item.id.trim().length > 0)
+      .map((item) => {
+        const devName = getItemLocalizedDeviceName(item.deviceTypeId, locale, item.deviceNameSnapshot);
+        const priceMinor = Number(item.totalPriceMinor);
+        return {
+          id: item.id,
+          deviceName: devName,
+          priceMinor: Number.isFinite(priceMinor) ? priceMinor : 0,
+          hasCharger: item.hasCharger === true,
+        };
+      });
 
-      return {
-        id: i.id,
-        deviceName: devName,
-        priceMinor: i.totalPriceMinor,
-        hasCharger: i.hasCharger,
-      };
-    });
-
-    const custCode = cust ? getCustomerCode(cust) : 'A7K2';
-    const isExempt = cust ? Boolean(cust.chargerFeeExempt) : false;
+    const custCode = safeCustomerId && cust ? getCustomerCode(cust) : '----';
+    const isExempt = cust ? cust.chargerFeeExempt === true : false;
+    const displayNumber = Number(ord.displayNumber);
+    const createdAt = typeof ord.createdAt === 'string' ? ord.createdAt : '';
 
     res.push({
       id: ord.id,
-      orderNumber: ord.displayNumber,
-      customerName: cust ? cust.name : locale === 'ar' ? 'عميل غير معروف' : 'Unknown Customer',
+      orderNumber: Number.isSafeInteger(displayNumber) && displayNumber > 0 ? displayNumber : 0,
+      customerName: cust && typeof cust.name === 'string' && cust.name.trim()
+        ? cust.name
+        : locale === 'ar' ? 'عميل غير معروف' : 'Unknown Customer',
       customerId: custCode,
       chargerFeeExempt: isExempt,
-      createdAt: ord.createdAt,
+      createdAt,
       items: uiItems,
-      note: ord.notes,
+      note: typeof ord.notes === 'string' ? ord.notes : undefined,
       status: projectedStatus,
       paymentStatus,
     });
@@ -4445,7 +4483,7 @@ export const getOrdersForDay = async (
     if (numA > 0 && numB > 0 && numA !== numB) {
       return numB - numA;
     }
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0);
   });
 };
 
@@ -4464,28 +4502,36 @@ export const getNextOrderNumberForDay = async (dayId: string): Promise<number> =
 export const searchCustomers = async (query: string): Promise<UICustomerItem[]> => {
   if (!query || !query.trim()) return [];
 
-  // The add-order screen can be opened before the initial local database
-  // hydration finishes. Always await the shared hydration promise before
-  // reading customersMap, otherwise a valid search can incorrectly return []
-  // while the persisted customer list is still being loaded.
+  // Wait for the shared local-first hydration before reading customer indexes.
   await ensureStoreHydrated();
 
   const queryTerms = normalizeCustomerSearchText(query).split(' ').filter(Boolean);
-  const all = Array.from(customersMap.values()).filter((c) => c.isActive);
+  const all = Array.from(customersMap.values()).filter((customer) =>
+    customer && customer.isActive === true &&
+    typeof customer.id === 'string' && customer.id.trim().length > 0
+  );
 
   return all
-    .filter((c) => {
-      const searchableValues = [c.name, c.phone || '', getCustomerCode(c), c.id].map(normalizeCustomerSearchText);
-      // Match all query words, even when they appear in different customer fields.
+    .filter((customer) => {
+      const searchableValues = [
+        customer.name,
+        customer.phone,
+        getCustomerCode(customer),
+        customer.id,
+      ].map(normalizeCustomerSearchText);
       return queryTerms.every((term) => searchableValues.some((value) => value.includes(term)));
     })
-    .map((c) => ({
-      id: c.id,
-      name: c.name,
-      code: getCustomerCode(c),
-      phone: c.phone || '',
-      debtLimitMinor: c.debtLimitMinor,
-      chargerFeeExempt: c.chargerFeeExempt,
+    .map((customer) => ({
+      id: customer.id,
+      name: typeof customer.name === 'string' && customer.name.trim()
+        ? customer.name
+        : 'عميل غير معروف',
+      code: getCustomerCode(customer),
+      phone: typeof customer.phone === 'string' ? customer.phone : '',
+      debtLimitMinor: Number.isFinite(Number(customer.debtLimitMinor))
+        ? Number(customer.debtLimitMinor)
+        : -2000,
+      chargerFeeExempt: customer.chargerFeeExempt === true,
     }));
 };
 
@@ -4547,7 +4593,7 @@ export const searchCustomersAndOrders = async (
   await ensureStoreHydrated();
   const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
   const q = query ? query.trim() : '';
-  const totalStoreCustomersCount = Array.from(customersMap.values()).filter((c) => c.isActive).length;
+  const totalStoreCustomersCount = Array.from(customersMap.values()).filter((customer) => customer?.isActive === true).length;
 
   // 1. If query is empty, return customers list (all or bounded if explicit limit passed)
   if (!q) {
@@ -4561,45 +4607,43 @@ export const searchCustomersAndOrders = async (
     };
   }
 
-  // 2. Check if searching by Order Number (e.g. "8", "#8", "27")
+  // 2. Search by order number. Normalize Arabic-Indic digits before deciding
+  // whether this is an order query, then project each legacy row into a safe DTO.
   const cleanOrderNum = q.startsWith('#') ? q.slice(1).trim() : q.trim();
-  const isNumeric = /^\d+$/.test(cleanOrderNum);
+  const normalizedOrderNum = normalizeCustomerSearchText(cleanOrderNum);
+  const isNumeric = /^\d+$/.test(normalizedOrderNum);
 
   if (isNumeric) {
-    const targetOrderNum = parseInt(cleanOrderNum, 10);
+    const targetOrderNum = Number(normalizedOrderNum);
     const matchingOrders: UIOrderSearchResult[] = [];
 
-    for (const ord of effectiveOrdersMap.values()) {
-      if (ord.displayNumber === targetOrderNum) {
-        const cust = customersMap.get(ord.customerId);
-        const day = daysMap.get(ord.dayId);
-        const items = Array.from(effectiveItemsMap.values()).filter((i) => i.orderId === ord.id && i.status !== 'cancelled');
-        const totalMinor = items.reduce((sum, it) => sum + it.totalPriceMinor, 0);
+    for (const order of effectiveOrdersMap.values()) {
+      if (Number(order?.displayNumber) !== targetOrderNum) continue;
 
-        matchingOrders.push({
-          orderId: ord.id,
-          orderNumber: ord.displayNumber,
-          dayId: ord.dayId,
-          businessDate: day?.businessDate || (typeof ord.createdAt === 'string' ? ord.createdAt.split('T')[0] : ''),
-          customerId: ord.customerId,
-          customerName: cust ? cust.name : 'عميل غير معروف',
-          customerCode: cust ? getCustomerCode(cust) : '----',
-          customerPhone: cust?.phone,
-          createdAt: ord.createdAt,
-          status: ord.status,
-          totalMinor,
-        });
-      }
+      const customer = typeof order.customerId === 'string'
+        ? customersMap.get(order.customerId)
+        : undefined;
+      const day = typeof order.dayId === 'string' ? daysMap.get(order.dayId) : undefined;
+      const items = Array.from(effectiveItemsMap.values()).filter((item) =>
+        item?.orderId === order.id && item.status !== 'cancelled'
+      );
+      const projected = projectOrderSearchResult(
+        order,
+        customer,
+        day,
+        items,
+        customer ? getCustomerCode(customer) : '----'
+      );
+      if (projected) matchingOrders.push(projected);
     }
 
-    matchingOrders.sort(
-      (a, b) => new Date(b.businessDate).getTime() - new Date(a.businessDate).getTime()
-    );
+    matchingOrders.sort((a, b) => {
+      const aTime = Date.parse(a.businessDate) || 0;
+      const bTime = Date.parse(b.businessDate) || 0;
+      return bTime - aTime;
+    });
 
     const targetOrders = limit && limit > 0 ? matchingOrders.slice(0, limit) : matchingOrders;
-    // A numeric query is always an order-number search. If no order exists,
-    // return a normal empty state instead of falling through into phone/code
-    // customer search (which can trigger unrelated balance reads).
     return {
       customers: [],
       orders: targetOrders,
@@ -4610,14 +4654,15 @@ export const searchCustomersAndOrders = async (
   }
 
   // 3. Search customers by Name, Phone, or Customer Code across ALL active customers in store
-  const qLower = q.toLowerCase();
+  const qLower = normalizeCustomerSearchText(q);
   const matchingCusts: CustomerEntity[] = [];
 
   for (const cust of customersMap.values()) {
-    if (!cust.isActive) continue;
-    const code = getCustomerCode(cust).toLowerCase();
-    const phone = (cust.phone || '').toLowerCase();
-    const name = (typeof cust.name === 'string' ? cust.name : '').toLowerCase();
+    if (!cust || cust.isActive !== true) continue;
+    if (typeof cust.id !== 'string' || !cust.id.trim()) continue;
+    const code = normalizeCustomerSearchText(getCustomerCode(cust));
+    const phone = normalizeCustomerSearchText(cust.phone);
+    const name = normalizeCustomerSearchText(cust.name);
 
     if (name.includes(qLower) || phone.includes(qLower) || code.includes(qLower)) {
       matchingCusts.push(cust);
@@ -4641,8 +4686,8 @@ export const searchCustomersAndOrders = async (
     }
     customerResults.push({
       id: cust.id,
-      name: cust.name,
-      phone: cust.phone || '',
+      name: typeof cust.name === 'string' && cust.name.trim() ? cust.name : 'عميل غير معروف',
+      phone: typeof cust.phone === 'string' ? cust.phone : '',
       code: getCustomerCode(cust),
       currentBalanceMinor: balanceMinor,
       balanceUnavailable,

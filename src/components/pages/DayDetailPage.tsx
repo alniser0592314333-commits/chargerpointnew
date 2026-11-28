@@ -150,7 +150,11 @@ export const DayDetailPage: React.FC<DayDetailPageProps> = ({
 
     if (aHasValidNumber !== bHasValidNumber) return aHasValidNumber ? -1 : 1;
 
-    const createdAtDifference = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    // Missing/legacy timestamps sort as zero instead of returning NaN from
+    // the comparator, keeping order-search results deterministic.
+    const aCreatedAt = Date.parse(a.createdAt || '') || 0;
+    const bCreatedAt = Date.parse(b.createdAt || '') || 0;
+    const createdAtDifference = bCreatedAt - aCreatedAt;
     if (!aHasValidNumber || !bHasValidNumber) return createdAtDifference;
 
     return b.orderNumber - a.orderNumber || createdAtDifference;

@@ -6,7 +6,7 @@ on:
       release_version:
         description: "Version to build (X.Y.Z; must be newer than the installed app)"
         required: true
-        default: "1.3.9"
+        default: "1.4.3"
         type: string
       release_target:
         description: "Which APK to release"
@@ -58,10 +58,10 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Typecheck and run notification/version tests
+      - name: Typecheck and run release safety regressions
         run: |
           npm run lint
-          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts src/tests/customer_portal_polish.test.ts src/tests/customer_notifications_routing.test.ts src/tests/customer_portal_security_contract.test.ts src/tests/local_payment_helper_code.test.ts
+          npx vitest run src/tests/native_push_notifications.test.ts src/tests/app_release_policy.test.ts src/tests/customer_portal_polish.test.ts src/tests/customer_notifications_routing.test.ts src/tests/customer_portal_security_contract.test.ts src/tests/local_payment_helper_code.test.ts src/tests/admin_session_lifecycle_regression.test.ts src/tests/order_search_legacy_data.test.ts
 
       - name: Build production web assets
         env:
@@ -470,14 +470,21 @@ jobs:
           print("Configured dark branded native launch screen and window background to avoid the white startup flash.")
           PY
 
-      - name: Configure permanent signing key and R8 obfuscation
+      - name: Configure and verify the permanent signing key and R8 obfuscation
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           python3 - <<'PY'
           import base64, os
           from pathlib import Path
           encoded = os.environ.get("ANDROID_KEYSTORE_BASE64", "").strip()
+          required = ["ANDROID_KEYSTORE_PASSWORD", "ANDROID_KEY_ALIAS", "ANDROID_KEY_PASSWORD"]
+          missing = [name for name in required if not os.environ.get(name, "").strip()]
+          if missing:
+              raise SystemExit("Missing required permanent signing secrets: " + ", ".join(missing))
           if not encoded:
               raise SystemExit("Missing ANDROID_KEYSTORE_BASE64. Configure the permanent signing key before releasing updates.")
           try:
@@ -486,7 +493,23 @@ jobs:
               raise SystemExit("ANDROID_KEYSTORE_BASE64 must be base64-encoded keystore bytes") from exc
           if len(data) < 1024:
               raise SystemExit("Signing keystore is unexpectedly small")
-          Path("android/app/release-keystore.jks").write_bytes(data)
+          keystore_path = Path("android/app/release-keystore.jks")
+          keystore_path.write_bytes(data)
+          import subprocess
+          env = os.environ.copy()
+          subprocess.run([
+              "keytool", "-list", "-keystore", str(keystore_path),
+              "-storepass", env["ANDROID_KEYSTORE_PASSWORD"],
+              "-alias", env["ANDROID_KEY_ALIAS"],
+          ], check=True, stdout=subprocess.DEVNULL)
+          subprocess.run([
+              "keytool", "-certreq", "-alias", env["ANDROID_KEY_ALIAS"],
+              "-keystore", str(keystore_path),
+              "-storepass", env["ANDROID_KEYSTORE_PASSWORD"],
+              "-keypass", env["ANDROID_KEY_PASSWORD"],
+              "-file", "/tmp/chargerpoint-signing-check.csr",
+          ], check=True, stdout=subprocess.DEVNULL)
+          Path("/tmp/chargerpoint-signing-check.csr").unlink(missing_ok=True)
           gradle = Path("android/app/build.gradle")
           gradle.write_text(gradle.read_text() + """
           
@@ -551,7 +574,7 @@ jobs:
       - name: Check out source for GitHub CLI release metadata
         uses: actions/checkout@v4
 
-      - name: Download both signed APKs
+      - name: Download requested signed APK artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: ChargerPoint-*-v${{ inputs.release_version }}-signed-apk
@@ -578,9 +601,7 @@ jobs:
           test "${#files[@]}" -gt 0
           tag="v${APP_VERSION}"
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "Release $tag already exists; replacing matching APK assets with the newly built signed APKs."
-            gh release upload "$tag" "${files[@]}" --clobber
-            gh release edit "$tag" --title "نقطة الشحن v${APP_VERSION}"
-          else
-            gh release create "$tag" "${files[@]}" --title "نقطة الشحن v${APP_VERSION}" --generate-notes
+            echo "Release $tag already exists. Refusing to overwrite a published signed release; choose a new version."
+            exit 1
           fi
+          gh release create "$tag" "${files[@]}" --title "نقطة الشحن v${APP_VERSION}" --generate-notes
