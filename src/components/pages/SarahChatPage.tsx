@@ -215,6 +215,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     if (!activeAccountId || hydratedAccount !== activeAccountId || !pending.length) return;
     const missing = pending.filter((item) =>
       item.actorAccountId === activeAccountId
+      && (item.conversationDate || gazaDateKey()) === selectedDate
       && item.state !== "COMPLETED"
       && Boolean(item.text)
       && Array.isArray(item.historySnapshot)
@@ -246,6 +247,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     if (!activeAccountId || hydratedAccount !== activeAccountId || pendingBinAction) return;
     const record = pending.find((item) =>
       item.actorAccountId === activeAccountId
+      && (item.conversationDate || gazaDateKey()) === selectedDate
       && item.state === "WAITING_FOR_CONFIRMATION"
       && Boolean(item.pendingBinAction)
       && Boolean(item.text)
@@ -465,6 +467,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         state: navigator.onLine ? "READY_TO_SEND" : "QUEUED_OFFLINE",
         text: clean,
         correlationId,
+        conversationDate: selectedDate,
         historySnapshot,
       });
       if (!isCurrent(accountId, operation)) return;
