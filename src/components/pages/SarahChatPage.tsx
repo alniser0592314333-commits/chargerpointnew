@@ -624,7 +624,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         if (!isCurrent(accountId, operation)) return;
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         await sarahInputQueue.transition(accountId, id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", {
-          lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
+          lastErrorCode: protectedActionConfirmed ? "AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION" : err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
+              pendingBinAction: protectedActionConfirmed ? undefined : current.pendingBinAction,
         });
         setMessages((prev) => prev.map((item) => item.queueId === id
           ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة" }
@@ -993,16 +994,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           setMessages((prev) => [...prev.filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)), {
             role: "assistant", text: notice, createdAt: new Date().toISOString(), queueId: pendingAction.id,
           }]);
-          try {
-            const rows = await sarahInputQueue.list(accountId);
-            const current = rows.find((row) => row.id === pendingAction.id);
-            if (current && current.state !== "NEEDS_ATTENTION") {
-              await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
-                pendingBinAction: undefined,
-                lastErrorCode: "AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION",
-              });
-            }
-          } catch {}
         }
       }
     } finally {
