@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, AlertCircle, Menu, X, LogOut, MessageSquare } from "lucide-react";
-import { sarahChatService, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
+import { sarahChatService, SarahPartialTaskError, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
 import { sendSmsUsingSystemDefaultSim } from "../../services/nativeSms";
 import { UserSession } from "../../services/auth/authService";
 import { Button } from "../ui/Button";
@@ -635,16 +635,23 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       if (isCurrent(accountId, operation)) {
         setError("");
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
-        const failureMessages = [
+        const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
+        const failureMessages: Message[] = [
           ...baseMessages,
           {
-            role: "user" as const,
+            role: "user",
             text: clean,
             createdAt: messageCreatedAt,
-            status: offline ? "offline" as const : "failed" as const,
+            status: offline ? "offline" : "failed",
             queueId: id,
-            statusText: offline ? "بانتظار عودة الاتصال" : "توقفت قبل وصول الرد النهائي؛ يمكن استكمالها من آخر نقطة محفوظة",
+            statusText: offline ? "بانتظار عودة الاتصال" : partialSummary ? "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" : "توقفت قبل وصول الرد النهائي؛ يمكن استكمالها من آخر نقطة محفوظة",
           },
+          ...(partialSummary ? [{
+            role: "assistant" as const,
+            text: partialSummary,
+            createdAt: new Date().toISOString(),
+            queueId: id,
+          }] : []),
         ];
         setMessages(failureMessages);
         await sarahConversationStore.saveDaily(accountId, selectedDate, failureMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
@@ -747,9 +754,22 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       if (isCurrent(accountId, operation)) {
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         try { await sarahInputQueue.transition(accountId, record.id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
-        setMessages((prev) => prev.map((item) => item.queueId === record.id
-          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة" }
-          : item));
+        const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
+        setMessages((prev) => {
+          const updated = prev.map((item) => item.queueId === record.id && item.role === "user"
+            ? { ...item, status: offline ? "offline" as const : "failed" as const, statusText: offline ? "بانتظار عودة الاتصال" : partialSummary ? "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" : "فشلت المهمة" }
+            : item).filter((item) => !(item.role === "assistant" && item.queueId === record.id));
+          return partialSummary ? [...updated, { role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id }] : updated;
+        });
+        if (partialSummary) {
+          const partialMessages = messages
+            .map((item) => item.queueId === record.id && item.role === "user"
+              ? { ...item, status: "failed" as const, statusText: "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" }
+              : item)
+            .filter((item) => !(item.role === "assistant" && item.queueId === record.id));
+          partialMessages.push({ role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id });
+          await sarahConversationStore.saveDaily(accountId, selectedDate, partialMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
+        }
         setError("");
       }
     } finally {
