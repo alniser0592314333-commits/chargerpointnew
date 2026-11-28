@@ -1423,11 +1423,11 @@ Deno.serve(async (req) => {
   if (!confirmationMode) {
     const { data: runtimeConfig, error: configError } = await admin.rpc("sarah_ai_get_runtime_config");
     if (configError || !runtimeConfig || runtimeConfig.enabled !== true || runtimeConfig.provider_id !== "gemini") {
-      return respond(503, { ok: false, error: "AI_PROVIDER_NOT_CONFIGURED" });
+      return respond(503, { ok: false, error: "AI_SERVICE_NOT_READY" });
     }
     const { data: providerSecret, error: keyError } = await admin.rpc("sarah_ai_get_provider_secret");
     if (keyError || typeof providerSecret !== "string" || !providerSecret) {
-      return respond(503, { ok: false, error: "PROVIDER_CREDENTIAL_UNAVAILABLE" });
+      return respond(503, { ok: false, error: "AI_SERVICE_NOT_READY" });
     }
     config = runtimeConfig as Record<string, unknown>;
     apiKey = providerSecret;
@@ -1441,7 +1441,7 @@ Deno.serve(async (req) => {
     : 2048;
   const modelId = confirmationMode ? "secure-bin-confirmation" : safeText(config.model_id, 128);
   if (!confirmationMode && !/^[A-Za-z0-9._:-]{1,128}$/.test(modelId)) {
-    return respond(503, { ok: false, error: "AI_PROVIDER_CONFIGURATION_INVALID" });
+    return respond(503, { ok: false, error: "AI_SERVICE_CONFIGURATION_INVALID" });
   }
 
   const stableSerialize = (value: unknown): string => {
@@ -2421,25 +2421,25 @@ Deno.serve(async (req) => {
         const generationConfig: Record<string, number> = {};
         if (args.temperature !== undefined) {
           if (typeof args.temperature !== "number" || !Number.isFinite(args.temperature) || args.temperature < 0 || args.temperature > 2) {
-            return { response: respond(400, { ok: false, error: "AI_PROVIDER_TEMPERATURE_INVALID" }) };
+            return { response: respond(400, { ok: false, error: "AI_SETTINGS_INPUT_INVALID" }) };
           }
           generationConfig.temperature = args.temperature;
         }
         if (args.max_output_tokens !== undefined) {
           if (typeof args.max_output_tokens !== "number" || !Number.isSafeInteger(args.max_output_tokens) || args.max_output_tokens < 1 || args.max_output_tokens > 4096) {
-            return { response: respond(400, { ok: false, error: "AI_PROVIDER_TOKEN_LIMIT_INVALID" }) };
+            return { response: respond(400, { ok: false, error: "AI_SETTINGS_INPUT_INVALID" }) };
           }
           generationConfig.maxOutputTokens = args.max_output_tokens;
         }
         if (args.timeout_ms !== undefined) {
           if (typeof args.timeout_ms !== "number" || !Number.isSafeInteger(args.timeout_ms) || args.timeout_ms < 5000 || args.timeout_ms > 120000) {
-            return { response: respond(400, { ok: false, error: "AI_PROVIDER_TIMEOUT_INVALID" }) };
+            return { response: respond(400, { ok: false, error: "AI_SETTINGS_INPUT_INVALID" }) };
           }
           generationConfig.timeoutMs = args.timeout_ms;
         }
         if (!/^[A-Za-z0-9._:-]{1,128}$/.test(modelId)
           || Object.keys(args).some((key) => !["model_id","temperature","max_output_tokens","timeout_ms"].includes(key))) {
-          return { response: respond(400, { ok: false, error: "AI_PROVIDER_SETTINGS_INPUT_INVALID" }) };
+          return { response: respond(400, { ok: false, error: "AI_SETTINGS_INPUT_INVALID" }) };
         }
         const current = await invokeSettings("read");
         if (current.error) {
@@ -2778,7 +2778,7 @@ Deno.serve(async (req) => {
         });
       }
       const firstBytes = await readBoundedResponseBody(firstResponse, MAX_PROVIDER_RESPONSE_BYTES);
-      if (firstBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
+      if (firstBytes === null) return respond(502, { ok: false, error: "AI_RESPONSE_TOO_LARGE" });
       let firstResult: Record<string, unknown>;
       try {
         firstResult = JSON.parse(new TextDecoder().decode(firstBytes)) as Record<string, unknown>;
@@ -3109,7 +3109,7 @@ Deno.serve(async (req) => {
           });
         }
         const followUpBytes = await readBoundedResponseBody(followUpResponse, MAX_PROVIDER_RESPONSE_BYTES);
-        if (followUpBytes === null) return respond(502, { ok: false, error: "AI_PROVIDER_RESPONSE_TOO_LARGE" });
+        if (followUpBytes === null) return respond(502, { ok: false, error: "AI_RESPONSE_TOO_LARGE" });
         let followUpResult: Record<string, unknown>;
         try {
           followUpResult = JSON.parse(new TextDecoder().decode(followUpBytes)) as Record<string, unknown>;
