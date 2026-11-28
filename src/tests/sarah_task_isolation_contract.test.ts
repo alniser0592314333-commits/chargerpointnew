@@ -36,6 +36,13 @@ describe("Sarah independent task and partial failure contract", () => {
     expect(page).toContain("إعادة المحاولة");
   });
 
+  it("passes earlier failed-task state to Sarah as read-only context for status questions", () => {
+    expect(page).toContain("const priorTask = message.queueId ? pending.find");
+    expect(page).toContain("priorTask?.state === \"NEEDS_ATTENTION\"");
+    expect(page).toContain("رمز الخطأ: ${errorCode}");
+    expect(page).toContain("لا تستأنف المهمة إلا إذا طلب المستخدم ذلك صراحةً");
+  });
+
   it("keeps unfinished tasks attached to their originating daily conversation", () => {
     expect(page).toContain("conversationDate: selectedDate");
     expect(page).toContain('(item.conversationDate || gazaDateKey()) === selectedDate');
