@@ -977,7 +977,12 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         try {
           const rows = await sarahInputQueue.list(accountId);
           const current = rows.find((row) => row.id === pendingAction.id);
-          if (current?.state === "UPLOADING" || current?.state === "SENT_TO_AI") {
+          if (protectedActionConfirmed && current && current.state !== "COMPLETED") {
+            await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
+              lastErrorCode: "AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION",
+              pendingBinAction: undefined,
+            });
+          } else if (current?.state === "UPLOADING" || current?.state === "SENT_TO_AI") {
             await sarahInputQueue.transition(accountId, pendingAction.id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", {
               lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
             });
