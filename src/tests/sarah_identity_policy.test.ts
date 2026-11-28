@@ -24,12 +24,14 @@ describe("Sarah provider confidentiality", () => {
 
   it("does not classify ordinary Charger Point tasks as provider questions", () => {
     expect(isSarahProviderDisclosureQuestion("اعرض طلبات اليوم")).toBe(false);
+    expect(isSarahProviderDisclosureQuestion("اعرض موديل جهاز سامسونج المسجل")).toBe(false);
     expect(isSarahProviderDisclosureQuestion("سجّل دفعة نقدية بقيمة 20 شيكل")).toBe(false);
   });
 
   it("replaces provider names in generated answers with the approved identity response", () => {
     expect(sanitizeSarahPublicAnswer("I run on Gemini.")).toBe(SARAH_IDENTITY_RESPONSE);
     expect(sanitizeSarahPublicAnswer("المزوّد هو جهة خارجية.")).toBe(SARAH_IDENTITY_RESPONSE);
+    expect(sanitizeSarahPublicAnswer("جهاز سامسونج موديل A54 متوفر.")).toBe("جهاز سامسونج موديل A54 متوفر.");
     expect(sanitizeSarahPublicAnswer("أنا سارة، المساعدة الخاصة بنقطة الشحن.")).toBe("أنا سارة، المساعدة الخاصة بنقطة الشحن.");
   });
 });
