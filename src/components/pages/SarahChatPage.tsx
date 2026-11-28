@@ -996,9 +996,14 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             : item).filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)),
           { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
         ]);
-        await sarahConversationStore.saveDaily(accountId, selectedDate, [
+        const confirmationTranscript = pendingAction.baseMessages.some(
+          (item) => item.role === "user" && item.text === pendingAction.text
+        ) ? pendingAction.baseMessages : [
           ...pendingAction.baseMessages,
-          { role: "user", text: pendingAction.text, createdAt: pendingAction.createdAt, queueId: pendingAction.id, status: "failed" },
+          { role: "user" as const, text: pendingAction.text, createdAt: pendingAction.createdAt, queueId: pendingAction.id, status: "failed" as const },
+        ];
+        await sarahConversationStore.saveDaily(accountId, selectedDate, [
+          ...confirmationTranscript.filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)),
           { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
         ], conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
         setError("");
