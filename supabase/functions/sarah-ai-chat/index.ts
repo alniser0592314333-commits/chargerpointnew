@@ -2511,6 +2511,13 @@ Deno.serve(async (req) => {
     return { result: toolResult };
   };
 
+  const pendingTaskResponse = () => respond(202, {
+    ok: true,
+    pending: true,
+    requestId,
+    retryAfterMs: 900,
+  });
+
   const confirmationInput = body.confirmationAction && typeof body.confirmationAction === "object" && !Array.isArray(body.confirmationAction)
     ? body.confirmationAction as Record<string, unknown>
     : null;
@@ -2672,13 +2679,6 @@ Deno.serve(async (req) => {
       clearTimeout(timer);
     }
   };
-  const pendingTaskResponse = () => respond(202, {
-    ok: true,
-    pending: true,
-    requestId,
-    retryAfterMs: 900,
-  });
-
   const extractAnswer = (candidate: Record<string, unknown> | null) => {
     const candidateContent = candidate?.content as Record<string, unknown> | undefined;
     const parts = Array.isArray(candidateContent?.parts)
