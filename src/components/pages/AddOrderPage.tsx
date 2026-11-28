@@ -102,28 +102,38 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
   // Devices Form State
   const [devices, setDevices] = useState<SelectedDeviceFormItem[]>([]);
 
-  // Load initial Phase 5 options & day entity
+  // Load initial Phase 5 options & day entity. Each read fails independently:
+  // a stale/legacy day row or a transient option lookup must not reject the page.
   useEffect(() => {
-    getDeviceTypesOptions(locale).then((opts) => {
-      setDeviceOptions(opts);
-      if (opts.length > 0) {
-        setDevices((prev) =>
-          prev.length === 0
-            ? [
-                {
-                  tempId: `dev-form-1`,
-                  deviceTypeId: opts[0].id,
-                  hasCharger: false,
-                },
-              ]
-            : prev
-        );
+    let active = true;
+    void getDeviceTypesOptions(locale).then((options) => {
+      if (!active) return;
+      setDeviceOptions(options);
+      if (options.length > 0) {
+        setDevices((previous) => previous.length === 0
+          ? [{ tempId: 'dev-form-1', deviceTypeId: options[0].id, hasCharger: false }]
+          : previous);
       }
+    }).catch((error) => {
+      console.error('Failed to load device options for add-order:', error);
+      if (active) setErrorMessage(locale === 'ar'
+        ? 'تعذر تحميل أنواع الأجهزة. أعد المحاولة.'
+        : 'Could not load device types. Please try again.');
     });
-    getNextOrderNumberForDay(dayId).then((num) => setNextOrderNumber(num));
-    getBusinessDay(dayId).then((day) => {
-      if (day) setDayEntity(day);
+
+    void getNextOrderNumberForDay(dayId).then((number) => {
+      if (active) setNextOrderNumber(number);
+    }).catch((error) => {
+      console.warn('Could not load the next order number:', error);
     });
+
+    void getBusinessDay(dayId).then((day) => {
+      if (active && day) setDayEntity(day);
+    }).catch((error) => {
+      console.warn('Could not load business-day details for add-order:', error);
+    });
+
+    return () => { active = false; };
   }, [dayId, locale]);
 
   // Extract valid ISO date string from dayEntity or dayId
