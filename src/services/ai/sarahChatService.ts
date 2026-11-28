@@ -318,9 +318,10 @@ export const sarahChatService = {
       };
       throw new Error(friendly[code] || code);
     }
-    if (typeof data.answer !== "string" || typeof data.modelId !== "string") {
+    if (typeof data.answer !== "string" || (data.modelId !== undefined && typeof data.modelId !== "string")) {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
     }
-    return { answer: data.answer, modelId: data.modelId };
+    // The public chat contract intentionally does not expose provider/model identifiers.
+    return { answer: data.answer, modelId: "" };
   },
 };
