@@ -4596,16 +4596,17 @@ export const searchCustomersAndOrders = async (
       (a, b) => new Date(b.businessDate).getTime() - new Date(a.businessDate).getTime()
     );
 
-    if (matchingOrders.length > 0) {
-      const targetOrders = limit && limit > 0 ? matchingOrders.slice(0, limit) : matchingOrders;
-      return {
-        customers: [],
-        orders: targetOrders,
-        isOrderSearch: true,
-        totalStoreCustomersCount,
-        totalMatchingCount: matchingOrders.length,
-      };
-    }
+    const targetOrders = limit && limit > 0 ? matchingOrders.slice(0, limit) : matchingOrders;
+    // A numeric query is always an order-number search. If no order exists,
+    // return a normal empty state instead of falling through into phone/code
+    // customer search (which can trigger unrelated balance reads).
+    return {
+      customers: [],
+      orders: targetOrders,
+      isOrderSearch: true,
+      totalStoreCustomersCount,
+      totalMatchingCount: matchingOrders.length,
+    };
   }
 
   // 3. Search customers by Name, Phone, or Customer Code across ALL active customers in store
@@ -4616,7 +4617,7 @@ export const searchCustomersAndOrders = async (
     if (!cust.isActive) continue;
     const code = getCustomerCode(cust).toLowerCase();
     const phone = (cust.phone || '').toLowerCase();
-    const name = cust.name.toLowerCase();
+    const name = (typeof cust.name === 'string' ? cust.name : '').toLowerCase();
 
     if (name.includes(qLower) || phone.includes(qLower) || code.includes(qLower)) {
       matchingCusts.push(cust);
@@ -4629,13 +4630,22 @@ export const searchCustomersAndOrders = async (
 
   const customerResults: UICustomerListItem[] = [];
   for (const cust of targetCusts) {
-    const balanceMinor = await repoContext.customerRepo.getBalance(cust.id);
+    let balanceMinor = 0;
+    let balanceUnavailable = false;
+    try {
+      balanceMinor = await repoContext.customerRepo.getBalance(cust.id);
+    } catch (error) {
+      // Keep search results visible when one balance projection is unavailable.
+      balanceUnavailable = true;
+      console.warn('Customer balance unavailable during customer search:', cust.id, error);
+    }
     customerResults.push({
       id: cust.id,
       name: cust.name,
       phone: cust.phone || '',
       code: getCustomerCode(cust),
       currentBalanceMinor: balanceMinor,
+      balanceUnavailable,
       isActive: cust.isActive,
       createdAt: cust.createdAt,
     });
@@ -4736,6 +4746,7 @@ export interface UICustomerListItem {
   phone: string;
   code: string;
   currentBalanceMinor: number;
+  balanceUnavailable?: boolean;
   isActive: boolean;
   createdAt: string;
 }
@@ -4770,13 +4781,22 @@ export const getCustomersList = async (
 
   const result: UICustomerListItem[] = [];
   for (const cust of targetCusts) {
-    const balanceMinor = await repoContext.customerRepo.getBalance(cust.id);
+    let balanceMinor = 0;
+    let balanceUnavailable = false;
+    try {
+      balanceMinor = await repoContext.customerRepo.getBalance(cust.id);
+    } catch (error) {
+      // A single local balance read must not make the whole customer list fail.
+      balanceUnavailable = true;
+      console.warn('Customer balance unavailable while loading customer list:', cust.id, error);
+    }
     result.push({
       id: cust.id,
       name: cust.name,
       phone: cust.phone || '',
       code: getCustomerCode(cust),
       currentBalanceMinor: balanceMinor,
+      balanceUnavailable,
       isActive: cust.isActive,
       createdAt: cust.createdAt,
     });
