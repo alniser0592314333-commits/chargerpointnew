@@ -21,6 +21,20 @@ BEGIN
     RAISE EXCEPTION 'Previous session for admin A was not revoked with new-login reason';
   END IF;
   IF NOT EXISTS (
+    SELECT 1 FROM auth.refresh_tokens
+    WHERE session_id='20000000-0000-4000-8000-000000000001'
+      AND revoked IS TRUE
+  ) THEN
+    RAISE EXCEPTION 'Previous refresh-token family was not revoked';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM auth.sessions
+    WHERE id='20000000-0000-4000-8000-000000000001'
+      AND not_after <= now()
+  ) THEN
+    RAISE EXCEPTION 'Previous Auth session was not marked ended';
+  END IF;
+  IF NOT EXISTS (
     SELECT 1 FROM public.account_sessions
     WHERE session_id='20000000-0000-4000-8000-000000000003'
       AND revoked_at IS NULL
