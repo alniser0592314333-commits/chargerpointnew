@@ -439,7 +439,7 @@ export const sarahChatService = {
         SMS_AVAILABLE_IN_ADMIN_ANDROID_APK_ONLY: "إرسال SMS متاح من تطبيق الأدمن على Android فقط.",
 
       };
-      throw new Error(friendly[reasonCode] || friendly[code] || code);
+      throw new Error(friendly[reasonCode] || friendly[code] || "حدث خطأ غير مصنف أثناء تنفيذ الخطوة؛ لم تعتبر سارة العملية ناجحة. تحقق من حالة السجل قبل إعادة المحاولة.");
     }
     if (typeof data.answer !== "string" || typeof data.modelId !== "string") {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
