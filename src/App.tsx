@@ -15,7 +15,7 @@ import { LoginPage } from './components/pages/LoginPage';
 import { ResetPasswordPage } from './components/pages/ResetPasswordPage';
 import { authService } from './services/auth/authService';
 import { saveAdminQuickLoginToken, removeSavedAdminQuickLoginTokensForUser } from './services/auth/accountBiometric';
-import { isCurrentAccountSessionActive, registerCurrentAccountSession } from './services/auth/accountSessionService';
+import { isCurrentAccountSessionActive } from './services/auth/accountSessionService';
 import { refreshStoreFromRemote, ensureStoreHydrated, subscribeStoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import type { StoreBootstrapProgress } from './components/pages/dayOrdersStore';
 import { globalSyncBridge } from './infrastructure/sync/syncBridge';
@@ -671,9 +671,10 @@ export default function App() {
             await ensureStoreHydrated();
             await refreshStoreFromRemote();
             const session = await authService.getCurrentSession();
-            if (session) {
-              try { await registerCurrentAccountSession(); } catch (sessionRegistrationError) { console.warn('Account session registration is unavailable; continuing after login.', sessionRegistrationError); }
-            }
+            // Every supported login path (password, saved account, biometric,
+            // Super Admin after BIN) has already reactivated its own Auth session
+            // before committing the profile. Do not register it a second time here.
+            if (!session) throw new Error('PROFILE_RPC_FAILED');
             setUserSession(session);
             setBootError(null);
             setIsAuthenticated(true);
