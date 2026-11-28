@@ -140,7 +140,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-[#8eb698]" />
           <h3 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{isArabic ? "الأجهزة والجلسات المسجّلة" : "Devices & signed-in sessions"}</h3>
-          <span className="text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">({sessions.filter((session) => !session.revoked_at && !session.is_expired).length} {isArabic ? "نشطة" : "active"})</span>
+          <span className="text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">({isArabic ? `آخر ${sessions.length}` : `latest ${sessions.length}`})</span>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading || busy} onClick={() => void loadSessions()} className="h-8 gap-1.5 text-xs">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -229,7 +229,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         <Button type="button" variant="outline" size="sm" disabled={busy || loading || selected.length === 0} onClick={() => setPendingAction("selected")} className="h-9 gap-1.5 text-xs">
           <LogOut className="h-3.5 w-3.5" />{isArabic ? `إخراج المحدد (${selected.length})` : `Sign out selected (${selected.length})`}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.filter((session) => !session.revoked_at && !session.is_expired).length <= 1} onClick={() => setPendingAction("others")} className="h-9 gap-1.5 text-xs">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || !sessions.some((session) => session.is_current)} onClick={() => setPendingAction("others")} className="h-9 gap-1.5 text-xs">
           <Globe className="h-3.5 w-3.5" />{isArabic ? "إخراج الأجهزة الأخرى" : "Sign out other devices"}
         </Button>
         <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.every((session) => Boolean(session.revoked_at) || Boolean(session.is_expired))} onClick={() => setPendingAction("all")} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
