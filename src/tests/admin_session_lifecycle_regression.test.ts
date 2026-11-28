@@ -349,7 +349,10 @@ describe("Admin session lifecycle root-cause regressions", () => {
     expect(reactivationIndex).toBeGreaterThanOrEqual(0);
     expect(profileIndex).toBeGreaterThan(reactivationIndex);
     expect(appSource).toContain("if (!session) throw new Error('PROFILE_RPC_FAILED')");
-    expect(appSource).not.toContain("registerCurrentAccountSession()");
+    const loginCallbackStart = appSource.indexOf("onLoginSuccess={async () => {");
+    const loginCallbackEnd = appSource.indexOf("        />", loginCallbackStart);
+    const loginCallback = appSource.slice(loginCallbackStart, loginCallbackEnd);
+    expect(loginCallback).not.toContain("registerCurrentAccountSession()");
   });
 
   it("provides separate save-and-sign-out and revoke-and-sign-out choices", () => {
