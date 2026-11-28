@@ -36,6 +36,13 @@ describe("Sarah independent task and partial failure contract", () => {
     expect(page).toContain("إعادة المحاولة");
   });
 
+  it("routes a clear retry follow-up to the original durable task instead of creating a new task", () => {
+    expect(page).toContain("const retryIntent =");
+    expect(page).toContain("const failedTasks = pending.filter");
+    expect(page).toContain("void retryQueued(failedTasks[0])");
+    expect(page).toContain("توجد أكثر من مهمة متوقفة");
+  });
+
   it("passes earlier failed-task state to Sarah as read-only context for status questions", () => {
     expect(page).toContain("const priorTask = message.queueId ? pending.find");
     expect(page).toContain("priorTask?.state === \"NEEDS_ATTENTION\"");
