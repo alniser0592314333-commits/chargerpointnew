@@ -4116,6 +4116,18 @@ const buildPaymentProjectionIndexes = (
   }
 
   for (const item of effectiveItemsMap.values()) {
+    // A malformed legacy cache entry must not take down every order/day view.
+    // Ignore rows that cannot be associated with a real order; valid historical
+    // items continue through the existing financial projection unchanged.
+    if (
+      !item ||
+      typeof item !== 'object' ||
+      typeof item.orderId !== 'string' ||
+      !item.orderId.trim() ||
+      typeof item.id !== 'string' ||
+      !item.id.trim()
+    ) continue;
+
     let orderItems = itemsByOrder.get(item.orderId);
     if (!orderItems) {
       orderItems = [];
@@ -4157,10 +4169,12 @@ const buildPaymentProjectionIndexes = (
 
   const orderSequenceById = new Map<string, number>();
   for (const order of effectiveOrdersMap.values()) {
+    if (!order || typeof order.id !== 'string' || !order.id.trim()) continue;
     orderSequenceById.set(order.id, Number(order.internalSequence ?? 0));
   }
   const itemSequenceById = new Map<string, number>();
   for (const item of effectiveItemsMap.values()) {
+    if (!item || typeof item.id !== 'string' || !item.id.trim()) continue;
     itemSequenceById.set(item.id, Number(item.itemSequence ?? 0));
   }
 
