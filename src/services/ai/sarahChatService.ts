@@ -11,6 +11,7 @@ export interface SarahPendingBinAction {
 export interface SarahPartialProgressStep {
   capability: string;
   status: "succeeded" | "failed" | "not_executed" | "pending";
+  reasonCode?: string;
 }
 
 export class SarahPartialTaskError extends Error {
@@ -91,13 +92,31 @@ const formatPartialProgress = (value: unknown): string | null => {
   const groups: Record<SarahPartialProgressStep["status"], string[]> = {
     succeeded: [], failed: [], not_executed: [], pending: [],
   };
+  const failureReasons: Record<string, string> = {
+    AI_CAPABILITY_PERMISSION_REQUIRED: "الصلاحية المطلوبة غير متاحة",
+    AI_CAPABILITY_PERMISSION_REVOKED: "تم رفض العملية بسبب الصلاحيات",
+    AI_CAPABILITY_TARGET_NOT_FOUND: "العميل أو الطلب أو العنصر غير موجود",
+    AI_CAPABILITY_STALE_DATA: "البيانات تغيرت منذ قراءتها",
+    AI_CAPABILITY_DATABASE_RULE_REJECTED: "قاعدة عمل في قاعدة البيانات منعت التنفيذ",
+    AI_CAPABILITY_CONFLICT: "يوجد تعارض في حالة السجل",
+    AI_CAPABILITY_INPUT_INVALID: "البيانات المدخلة غير صحيحة",
+    BIN_REQUIRED: "تحتاج إلى تأكيد أمني",
+    BIN_INVALID: "رمز التأكيد غير صحيح",
+    ACTION_FAILED: "تعذر تنفيذ العملية لسبب غير محدد",
+  };
   for (const item of rawSteps) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const step = item as Record<string, unknown>;
     const capability = typeof step.capability === "string" ? step.capability : "";
     const status = step.status;
     if (!capability || typeof status !== "string" || !(status in groups)) continue;
-    groups[status as SarahPartialProgressStep["status"]].push(labels[capability] || "عملية أخرى");
+    const label = labels[capability] || "عملية أخرى";
+    if (status === "failed") {
+      const reasonCode = typeof step.reasonCode === "string" ? step.reasonCode : "";
+      groups.failed.push(`${label}${failureReasons[reasonCode] ? `: ${failureReasons[reasonCode]}` : ""}`);
+    } else {
+      groups[status as SarahPartialProgressStep["status"]].push(label);
+    }
   }
   if (!groups.succeeded.length && !groups.failed.length) return null;
   const lines = ["ملخص التنفيذ قبل التوقف:"];
