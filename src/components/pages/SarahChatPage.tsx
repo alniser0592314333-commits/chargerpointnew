@@ -783,10 +783,11 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         const rows = await sarahInputQueue.list(accountId);
         const next = rows.find((row) => row.actorAccountId === accountId
           && Boolean(row.text)
+          // Reconnect may flush messages queued offline or resume a task already
+          // accepted by the server. NEEDS_ATTENTION requires an explicit user retry.
           && (row.state === "QUEUED_OFFLINE"
             || row.state === "READY_TO_SEND"
-            || row.state === "SENT_TO_AI"
-            || (row.state === "NEEDS_ATTENTION" && row.lastErrorCode === "UPLOAD_INTERRUPTED_REQUIRES_REVIEW")));
+            || row.state === "SENT_TO_AI"));
         if (next) await retryQueued(next);
       } catch {
         // The message remains visible as pending; the user can retry from it.
