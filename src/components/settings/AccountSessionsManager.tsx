@@ -48,7 +48,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
       await registerCurrentAccountSession();
       const result = await getAccountSessions();
       setSessions(result);
-      setSelected((previous) => previous.filter((id) => result.some((session) => session.session_id === id)));
+      setSelected((previous) => previous.filter((id) => result.some((session) => session.session_id === id && !session.revoked_at && !session.is_expired)));
     } catch (err: any) {
       setError(err?.message || (isArabic ? "تعذّر تحميل جلسات الحساب." : "Could not load account sessions."));
     } finally {
@@ -140,7 +140,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         <div className="flex items-center gap-2">
           <ShieldCheck className="h-4 w-4 text-emerald-700 dark:text-[#8eb698]" />
           <h3 className="text-sm font-bold text-gray-900 dark:text-[#daf1de]">{isArabic ? "الأجهزة والجلسات المسجّلة" : "Devices & signed-in sessions"}</h3>
-          <span className="text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">({sessions.length})</span>
+          <span className="text-xs tabular-nums text-gray-500 dark:text-[#8eb698]">({sessions.filter((session) => !session.revoked_at && !session.is_expired).length} {isArabic ? "نشطة" : "active"})</span>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading || busy} onClick={() => void loadSessions()} className="h-8 gap-1.5 text-xs">
           <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} />
@@ -148,7 +148,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         </Button>
       </div>
       <p className="text-xs leading-5 text-gray-500 dark:text-[#8eb698]">
-        {isArabic ? "تعرض القائمة الجلسات التي يستطيع النظام التعرّف عليها. معلومات الجهاز والمتصفح للتعرّف فقط وقد لا تحدد هوية الشخص." : "This list shows sessions the system can identify. Device and browser details are informational and do not identify the person using them."}
+        {isArabic ? "تعرض الجلسة الحالية وآخر 25 جلسة معروفة، بما فيها الجلسات التي أُلغيت بعد تسجيل دخول أحدث. معلومات الجهاز للتعرّف فقط ولا تثبت هوية الشخص." : "Shows the current session and up to 25 recent sessions, including those revoked by a newer login. Device details are informational and do not identify the person."}
       </p>
 
       {error && <div role="alert" className="flex items-start gap-2 border-b border-red-200 py-2 text-xs text-red-700 dark:border-red-900 dark:text-red-300"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" /><span className="break-words">{error}</span></div>}
@@ -192,7 +192,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
                 type="checkbox"
                 aria-label={isArabic ? `تحديد جلسة ${details.device}` : `Select ${details.device} session`}
                 checked={selected.includes(session.session_id)}
-                disabled={busy}
+                disabled={busy || Boolean(session.revoked_at) || Boolean(session.is_expired)}
                 onChange={() => toggleSelected(session.session_id)}
                 className="mt-1 h-4 w-4 rounded border-gray-300 accent-emerald-700"
               />
@@ -204,7 +204,11 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
                     : details.device}</span>
                   {session.is_current && <span className="rounded border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">{isArabic ? "هذا الجهاز" : "This device"}</span>}
                   {session.client_type && <span className="rounded border border-gray-200 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:border-[#285347] dark:text-[#8eb698]">{session.client_type === "native" ? (isArabic ? "تطبيق APK" : "Native APK") : session.client_type === "installed_pwa" ? "PWA" : (isArabic ? "متصفح" : "Browser")}</span>}
-                  {session.is_expired && <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-900 dark:text-amber-300">{isArabic ? "انتهت مهلة الجلسة" : "Idle expired"}</span>}
+                  {session.revoked_at
+                    ? <span className="rounded border border-red-200 px-1.5 py-0.5 text-[10px] font-semibold text-red-700 dark:border-red-900 dark:text-red-300">{session.revocation_reason === "new_login" ? (isArabic ? "استبدلها تسجيل دخول أحدث" : "Replaced by newer login") : (isArabic ? "جلسة ملغاة" : "Revoked")}</span>
+                    : session.is_expired
+                      ? <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-900 dark:text-amber-300">{isArabic ? "انتهت مهلة الجلسة" : "Idle expired"}</span>
+                      : <span className="rounded border border-emerald-200 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:border-emerald-900 dark:text-emerald-300">{isArabic ? "نشطة" : "Active"}</span>}
                 </div>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-600 dark:text-[#8eb698]">
                   <span>{details.browser}</span><span aria-hidden="true">·</span><span>{details.operatingSystem}</span>
@@ -213,6 +217,7 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
                   <p>{isArabic ? "تسجيل الدخول:" : "Signed in:"} {formatDate(session.created_at, locale)}</p>
                   <p>{isArabic ? "آخر نشاط مسجّل:" : "Last recorded activity:"} {formatDate(session.last_seen_at, locale)}</p>
                   {session.session_expires_at && <p>{isArabic ? "انتهاء مهلة الخمول:" : "Idle expiry:"} {formatDate(session.session_expires_at, locale)}</p>}
+                  {session.revoked_at && <p>{isArabic ? "تاريخ الإلغاء:" : "Revoked:"} {formatDate(session.revoked_at, locale)}</p>}
                 </div>
               </div>
             </div>
@@ -224,10 +229,10 @@ export const AccountSessionsManager: React.FC<AccountSessionsManagerProps> = ({ 
         <Button type="button" variant="outline" size="sm" disabled={busy || loading || selected.length === 0} onClick={() => setPendingAction("selected")} className="h-9 gap-1.5 text-xs">
           <LogOut className="h-3.5 w-3.5" />{isArabic ? `إخراج المحدد (${selected.length})` : `Sign out selected (${selected.length})`}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.length <= 1} onClick={() => setPendingAction("others")} className="h-9 gap-1.5 text-xs">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.filter((session) => !session.revoked_at && !session.is_expired).length <= 1} onClick={() => setPendingAction("others")} className="h-9 gap-1.5 text-xs">
           <Globe className="h-3.5 w-3.5" />{isArabic ? "إخراج الأجهزة الأخرى" : "Sign out other devices"}
         </Button>
-        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.length === 0} onClick={() => setPendingAction("all")} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
+        <Button type="button" variant="outline" size="sm" disabled={busy || loading || sessions.every((session) => Boolean(session.revoked_at) || Boolean(session.is_expired))} onClick={() => setPendingAction("all")} className="h-9 gap-1.5 text-xs border-red-200 text-red-700 hover:bg-red-50 dark:border-red-900 dark:text-red-300 dark:hover:bg-red-950/30">
           <LogOut className="h-3.5 w-3.5" />{isArabic ? "إخراج الجميع" : "Sign out all"}
         </Button>
       </div>
