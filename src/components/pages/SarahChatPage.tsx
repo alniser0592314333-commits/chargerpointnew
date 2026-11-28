@@ -365,14 +365,28 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
         // Never resend automatically: that could duplicate a billable SMS.
         localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: false, errorCode: "SMS_SUBMISSION_UNCERTAIN" };
       } else {
+        let claimStored = false;
         try {
+          // Persist the in-flight claim before crossing the native boundary. If
+          // storage is unavailable, do not send because retries could duplicate.
           localStorage.setItem(storageKey, JSON.stringify({ state: "started", at: new Date().toISOString() }));
-          const nativeResult = await sendSmsUsingSystemDefaultSim(phone, messageText);
-          localStorage.setItem(storageKey, JSON.stringify({ state: "submitted", parts: nativeResult.parts, subscriptionId: nativeResult.subscriptionId, at: new Date().toISOString() }));
-          localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: true, parts: nativeResult.parts, subscriptionId: nativeResult.subscriptionId };
-        } catch (smsError) {
-          localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: false, errorCode: smsError instanceof Error ? smsError.message.slice(0, 80) : "SMS_SUBMISSION_FAILED" };
-          try { localStorage.setItem(storageKey, JSON.stringify({ state: "failed", at: new Date().toISOString() })); } catch { /* best effort */ }
+          claimStored = true;
+        } catch {
+          localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: false, errorCode: "SMS_IDEMPOTENCY_STORAGE_UNAVAILABLE" };
+        }
+        if (claimStored) {
+          try {
+            const nativeResult = await sendSmsUsingSystemDefaultSim(phone, messageText);
+            localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: true, parts: nativeResult.parts, subscriptionId: nativeResult.subscriptionId };
+            // If this write fails after Android accepted the SMS, keep the
+            // durable "started" marker. A later retry will be uncertain, never resend.
+            try {
+              localStorage.setItem(storageKey, JSON.stringify({ state: "submitted", parts: nativeResult.parts, subscriptionId: nativeResult.subscriptionId, at: new Date().toISOString() }));
+            } catch { /* preserve the started marker to prevent duplicate sends */ }
+          } catch (smsError) {
+            localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: false, errorCode: smsError instanceof Error ? smsError.message.slice(0, 80) : "SMS_SUBMISSION_FAILED" };
+            try { localStorage.setItem(storageKey, JSON.stringify({ state: "failed", at: new Date().toISOString() })); } catch { /* best effort */ }
+          }
         }
       }
       continuationContext = { ...continuationContext, localSmsActionResult };
