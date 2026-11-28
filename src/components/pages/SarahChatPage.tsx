@@ -1064,6 +1064,8 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       </div>}
       <div ref={messagesContainerRef} className="min-h-0 flex-1 flex flex-col-reverse gap-3 overflow-y-auto overscroll-contain px-1 py-2">
         {!messages.length && <p className="py-12 text-center text-sm text-gray-500">احكيلي شو بدك، وبساعدك.</p>}
+        {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
+        {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
         {messages.slice().reverse().map((message, index) => {
           const identity = messageIdentity(message, index);
           const revealed = revealedMessageId === identity;
@@ -1123,8 +1125,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             {message.role === "user" && timeNode}
           </div>;
         })}
-        {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
-        {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
       </div>
       {pendingBinAction && <div className="rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
         <div className="mb-1 font-semibold">تأكيد أمني مطلوب</div>
