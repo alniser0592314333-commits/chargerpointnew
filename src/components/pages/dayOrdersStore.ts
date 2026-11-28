@@ -141,33 +141,37 @@ export const UI_DEVICE_NAME_MAP: Record<string, { ar: string; en: string }> = {
 };
 
 export const getItemLocalizedDeviceName = (
-  deviceTypeIdOrName?: string,
+  deviceTypeIdOrName?: unknown,
   locale: Locale = 'ar',
-  fallbackSnapshot?: string
+  fallbackSnapshot?: unknown
 ): string => {
-  if (!deviceTypeIdOrName && !fallbackSnapshot) return locale === 'en' ? 'Device' : 'جهاز';
-  
-  if (deviceTypeIdOrName) {
-    const dev = devicesMap.get(deviceTypeIdOrName);
+  // Older local snapshots can contain null/object values in text columns.
+  // Never return a non-string React child from this presentation boundary.
+  const safeDeviceValue = typeof deviceTypeIdOrName === 'string' ? deviceTypeIdOrName.trim() : '';
+  const safeFallback = typeof fallbackSnapshot === 'string' ? fallbackSnapshot.trim() : '';
+  if (!safeDeviceValue && !safeFallback) return locale === 'en' ? 'Device' : 'جهاز';
+
+  if (safeDeviceValue) {
+    const dev = devicesMap.get(safeDeviceValue);
     if (dev) {
       if (locale === 'en') {
         return dev.nameEn?.trim() || UI_DEVICE_LOCALIZATIONS[dev.id]?.en || UI_DEVICE_NAME_MAP[dev.name]?.en || dev.name;
       }
       return dev.nameAr?.trim() || UI_DEVICE_LOCALIZATIONS[dev.id]?.ar || UI_DEVICE_NAME_MAP[dev.name]?.ar || dev.name;
     }
-    const byId = UI_DEVICE_LOCALIZATIONS[deviceTypeIdOrName];
+    const byId = UI_DEVICE_LOCALIZATIONS[safeDeviceValue];
     if (byId) return locale === 'en' ? byId.en : byId.ar;
-    const byName = UI_DEVICE_NAME_MAP[deviceTypeIdOrName];
+    const byName = UI_DEVICE_NAME_MAP[safeDeviceValue];
     if (byName) return locale === 'en' ? byName.en : byName.ar;
   }
 
-  if (fallbackSnapshot) {
-    const byName = UI_DEVICE_NAME_MAP[fallbackSnapshot];
+  if (safeFallback) {
+    const byName = UI_DEVICE_NAME_MAP[safeFallback];
     if (byName) return locale === 'en' ? byName.en : byName.ar;
-    return fallbackSnapshot;
+    return safeFallback;
   }
 
-  return deviceTypeIdOrName || (locale === 'en' ? 'Device' : 'جهاز');
+  return safeDeviceValue || (locale === 'en' ? 'Device' : 'جهاز');
 };
 
 // Global local Database initialization
@@ -4386,7 +4390,12 @@ export const getOrdersForDay = async (
   // Number integrity is read-only here. Hydration and page rendering must never repair numbering.
   const { orders: effectiveOrdersMap, items: effectiveItemsMap } = getEffectiveOrderItemReadModel();
 
-  const allOrders = Array.from(effectiveOrdersMap.values()).filter((o) => isSameDayId(o.dayId, dayId));
+  const allOrders = Array.from(effectiveOrdersMap.values()).filter((order) =>
+    order &&
+    typeof order.id === 'string' && order.id.trim().length > 0 &&
+    typeof order.dayId === 'string' &&
+    isSameDayId(order.dayId, dayId)
+  );
   const indexes = buildPaymentProjectionIndexes(effectiveOrdersMap, effectiveItemsMap);
   const customerAllocationMaps = new Map<
     string,
@@ -4395,47 +4404,60 @@ export const getOrdersForDay = async (
 
   const res: UIDayOrderDetail[] = [];
   for (const ord of allOrders) {
-    const cust = customersMap.get(ord.customerId);
-    if (cust && !customerAllocationMaps.has(cust.id)) {
+    const cust = typeof ord.customerId === 'string' ? customersMap.get(ord.customerId) : undefined;
+    const safeCustomerId = cust && typeof cust.id === 'string' ? cust.id : '';
+    if (safeCustomerId && !customerAllocationMaps.has(safeCustomerId)) {
       customerAllocationMaps.set(
-        cust.id,
-        computeCustomerOrderPaymentStatuses(cust.id, effectiveOrdersMap, effectiveItemsMap, indexes)
+        safeCustomerId,
+        computeCustomerOrderPaymentStatuses(safeCustomerId, effectiveOrdersMap, effectiveItemsMap, indexes)
       );
     }
 
-    const alloc = cust ? customerAllocationMaps.get(cust.id)?.get(ord.id) : undefined;
+    const alloc = safeCustomerId ? customerAllocationMaps.get(safeCustomerId)?.get(ord.id) : undefined;
     const paymentStatus: 'PAID' | 'PARTIAL' | 'UNPAID' =
       ord.status === 'cancelled'
         ? 'UNPAID'
         : (alloc?.paymentStatus || 'UNPAID');
 
-    const allOrderItems = indexes.itemsByOrder.get(ord.id) || [];
-    const orderItems = allOrderItems.filter((i) => i.status !== 'cancelled');
-    const projectedStatus = calculateOrderProjection(allOrderItems, ord.status);
+    const allOrderItems = (indexes.itemsByOrder.get(ord.id) || []).filter((item) =>
+      item && typeof item === 'object'
+    );
+    const orderItems = allOrderItems.filter((item) => item.status !== 'cancelled');
+    const rawStatus = typeof ord.status === 'string' ? ord.status : 'pending';
+    const fallbackStatus = (['pending', 'charging', 'delivered', 'cancelled'].includes(rawStatus)
+      ? rawStatus
+      : 'pending') as OrderStatus;
+    const projectedStatus = calculateOrderProjection(allOrderItems, fallbackStatus);
 
-    const uiItems: UIOrderDeviceItem[] = orderItems.map((i) => {
-      const devName = getItemLocalizedDeviceName(i.deviceTypeId, locale, i.deviceNameSnapshot);
+    const uiItems: UIOrderDeviceItem[] = orderItems
+      .filter((item) => typeof item.id === 'string' && item.id.trim().length > 0)
+      .map((item) => {
+        const devName = getItemLocalizedDeviceName(item.deviceTypeId, locale, item.deviceNameSnapshot);
+        const priceMinor = Number(item.totalPriceMinor);
+        return {
+          id: item.id,
+          deviceName: devName,
+          priceMinor: Number.isFinite(priceMinor) ? priceMinor : 0,
+          hasCharger: item.hasCharger === true,
+        };
+      });
 
-      return {
-        id: i.id,
-        deviceName: devName,
-        priceMinor: i.totalPriceMinor,
-        hasCharger: i.hasCharger,
-      };
-    });
-
-    const custCode = cust ? getCustomerCode(cust) : 'A7K2';
-    const isExempt = cust ? Boolean(cust.chargerFeeExempt) : false;
+    const custCode = safeCustomerId && cust ? getCustomerCode(cust) : '----';
+    const isExempt = cust ? cust.chargerFeeExempt === true : false;
+    const displayNumber = Number(ord.displayNumber);
+    const createdAt = typeof ord.createdAt === 'string' ? ord.createdAt : '';
 
     res.push({
       id: ord.id,
-      orderNumber: ord.displayNumber,
-      customerName: cust ? cust.name : locale === 'ar' ? 'عميل غير معروف' : 'Unknown Customer',
+      orderNumber: Number.isSafeInteger(displayNumber) && displayNumber > 0 ? displayNumber : 0,
+      customerName: cust && typeof cust.name === 'string' && cust.name.trim()
+        ? cust.name
+        : locale === 'ar' ? 'عميل غير معروف' : 'Unknown Customer',
       customerId: custCode,
       chargerFeeExempt: isExempt,
-      createdAt: ord.createdAt,
+      createdAt,
       items: uiItems,
-      note: ord.notes,
+      note: typeof ord.notes === 'string' ? ord.notes : undefined,
       status: projectedStatus,
       paymentStatus,
     });
@@ -4447,7 +4469,7 @@ export const getOrdersForDay = async (
     if (numA > 0 && numB > 0 && numA !== numB) {
       return numB - numA;
     }
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0);
   });
 };
 
