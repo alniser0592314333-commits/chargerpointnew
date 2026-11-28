@@ -998,7 +998,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             : err instanceof Error ? err.message : "تعذر إكمال التأكيد الأمني.";
         setMessages((prev) => [
           ...prev.map((item) => item.queueId === pendingAction.id
-            ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
+            ? { ...item, status: offline ? "offline" as const : "failed" as const, statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
             : item).filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)),
           { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
         ]);
