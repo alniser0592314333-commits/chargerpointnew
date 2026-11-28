@@ -73,7 +73,7 @@ export const projectOrderSearchResult = (
     validCalendarDate(createdAt) ||
     validCalendarDate(dayId.startsWith('day-') ? dayId.slice(4) : '');
 
-  const totalMinor = itemValues.reduce((sum, value) => {
+  const totalMinor = itemValues.reduce<number>((sum, value) => {
     const item = asRecord(value);
     if (item.orderId !== orderId || item.status === 'cancelled') return sum;
     const amount = Number(item.totalPriceMinor);
