@@ -54,7 +54,7 @@ const formatPartialProgress = (value: unknown): string | null => {
     const step = item as Record<string, unknown>;
     const capability = typeof step.capability === "string" ? step.capability : "";
     const status = step.status;
-    if (!capability || !(status in groups)) continue;
+    if (!capability || typeof status !== "string" || !(status in groups)) continue;
     groups[status as SarahPartialProgressStep["status"]].push(labels[capability] || "عملية أخرى");
   }
   if (!groups.succeeded.length && !groups.failed.length) return null;
