@@ -2700,8 +2700,13 @@ Deno.serve(async (req) => {
       });
     }
     if (resultRecord.ok === false) {
-      const resultError = safeText(resultRecord.error, 80);
-      return respond(409, { ok: false, error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT" });
+      const rawResultError = safeText(resultRecord.error, 80);
+      const resultError = /^[A-Z][A-Z0-9_]{1,79}$/.test(rawResultError) ? rawResultError : "AI_CAPABILITY_CONFLICT";
+      return respond(409, {
+        ok: false,
+        error: resultError === "CUSTOMER_NEEDS_DISAMBIGUATION" ? "AI_CUSTOMER_NEEDS_DISAMBIGUATION" : "AI_CAPABILITY_CONFLICT",
+        reasonCode: resultError,
+      });
     }
     executedCapabilityNames.add(confirmationName);
     const confirmedActions = Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [];
