@@ -635,7 +635,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       if (isCurrent(accountId, operation)) {
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
-        setError(offline ? "انقطع الاتصال أثناء إرسال الطلب؛ بقيت المهمة محفوظة ويمكن استكمالها عند عودة الاتصال." : partialSummary ? "" : err instanceof Error ? err.message : "تعذر تنفيذ الطلب بسبب خطأ غير معروف.");
+        setError("");
         const failureMessages: Message[] = [
           ...baseMessages,
           {
