@@ -1,0 +1,49 @@
+name: Verify admin permission epoch invalidation
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20261128110000_admin_permission_epoch_invalidation.sql"
+      - "supabase/tests/admin_permission_epoch_*.sql"
+      - ".github/workflows/verify-admin-permission-epochs.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20261128110000_admin_permission_epoch_invalidation.sql"
+      - "supabase/tests/admin_permission_epoch_*.sql"
+      - ".github/workflows/verify-admin-permission-epochs.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - name: Prepare isolated permission epoch fixture
+        env:
+          PGPASSWORD: postgres
+        run: |
+          createdb -h localhost -U postgres permission_epoch_test
+          psql -h localhost -U postgres -d permission_epoch_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_permission_epoch_fixture.sql
+      - name: Apply permission epoch migration
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d permission_epoch_test -v ON_ERROR_STOP=1 -f supabase/migrations/20261128110000_admin_permission_epoch_invalidation.sql
+      - name: Verify invalidation, statement batching, RLS and read-only grants
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -d permission_epoch_test -v ON_ERROR_STOP=1 -f supabase/tests/admin_permission_epoch_runtime.test.sql
