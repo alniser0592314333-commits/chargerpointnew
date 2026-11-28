@@ -357,7 +357,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onBack?: () 
       const storageKey = `cp-sarah-sms:${action.actionRequestId}`;
       let cached: { state?: string; parts?: number; subscriptionId?: number } | null = null;
       try { cached = JSON.parse(localStorage.getItem(storageKey) || "null"); } catch { cached = null; }
-      let localSmsActionResult: { actionRequestId: string; submitted: boolean; parts?: number; subscriptionId?: number; errorCode?: string };
+      let localSmsActionResult: { actionRequestId: string; submitted: boolean; parts?: number; subscriptionId?: number; errorCode?: string } = { actionRequestId: action.actionRequestId, submitted: false, errorCode: "SMS_SUBMISSION_FAILED" };
       if (cached?.state === "submitted") {
         localSmsActionResult = { actionRequestId: action.actionRequestId, submitted: true, parts: cached.parts, subscriptionId: cached.subscriptionId };
       } else if (cached?.state === "started") {
