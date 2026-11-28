@@ -131,7 +131,7 @@ export const sarahConversationStore = {
         };
         tx.oncomplete = () => {
           if (result) resolve(result);
-          else throw new Error("DAILY_CONVERSATION_CREATE_FAILED");
+          else reject(new Error("DAILY_CONVERSATION_CREATE_FAILED"));
         };
       });
     } finally { db.close(); }
