@@ -156,6 +156,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
     let active = true;
     const query = searchQuery.trim();
     if (customerMode === 'existing' && query) {
+      setErrorMessage('');
       const loadResults = async () => {
         try {
           const results = await searchCustomers(query);
@@ -163,6 +164,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
 
           if (!canOverrideDebtLimit || results.length === 0) {
             setSearchResults(results);
+            setErrorMessage('');
             return;
           }
 
@@ -184,7 +186,10 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
             }
           }));
 
-          if (active) setSearchResults(annotatedResults);
+          if (active) {
+            setSearchResults(annotatedResults);
+            setErrorMessage('');
+          }
         } catch (error) {
           console.error('Add-order customer search failed:', error);
           if (active) {
@@ -198,6 +203,7 @@ export const AddOrderPage: React.FC<AddOrderPageProps> = ({
       void loadResults();
     } else {
       setSearchResults([]);
+      setErrorMessage('');
     }
     return () => { active = false; };
   }, [searchQuery, customerMode, canOverrideDebtLimit, locale]);
