@@ -266,7 +266,7 @@ describe("Sarah chat gateway security contract", () => {
   it("exposes one device catalog read and requires it before order creation", () => {
     expect((source.match(/name: "get_device_catalog"/g) || []).length).toBe(2);
     expect((source.match(/toolName === "get_device_catalog"/g) || []).length).toBe(1);
-    expect(source).toContain("call get_device_catalog and resolve each device");
+    expect(source).toContain("call get_device_catalog and resolve each non-phone device");
     expect(source).toContain('requiredPermissionGroups: [["devices:view"]]');
   });
 
