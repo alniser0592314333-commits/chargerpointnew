@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { readBoundedRequestBody, readBoundedResponseBody } from "../_shared/http/requestBodyLimit.ts";
+import { isSarahProviderDisclosureQuestion, sanitizeSarahPublicAnswer, SARAH_IDENTITY_RESPONSE } from "../../../src/application/ai/sarahIdentityPolicy.ts";
 
 const MAX_BODY_BYTES = 160 * 1024;
 const MAX_PROVIDER_RESPONSE_BYTES = 128 * 1024;
@@ -68,9 +69,8 @@ const sanitizeLocalSyncActionResult = (value: unknown): LocalSyncActionResult | 
 };
 
 const mapGeminiError = (status: number) =>
-  status === 429 ? "GEMINI_QUOTA_OR_RATE_LIMIT"
-    : status >= 500 ? "GEMINI_PROVIDER_UNAVAILABLE"
-    : "GEMINI_REQUEST_REJECTED";
+  status === 429 || status >= 500 ? "AI_SERVICE_TEMPORARILY_UNAVAILABLE"
+    : "AI_REQUEST_REJECTED";
 
 type PermissionSnapshotCacheEntry = {
   adminId: string;
@@ -274,6 +274,11 @@ Deno.serve(async (req) => {
   const localSyncActionResult = canManageSync ? suppliedLocalSyncActionResult : null;
   if (!isSuperAdmin && !permissions.includes("ai:use")) {
     return respond(403, { ok: false, error: "AI_USE_PERMISSION_REQUIRED" });
+  }
+
+  // Provider/model/operator questions are answered locally and never sent to the model.
+  if (isSarahProviderDisclosureQuestion(text)) {
+    return respond(200, { ok: true, answer: SARAH_IDENTITY_RESPONSE });
   }
 
   // Durable task identity is bound to the authenticated user/session by the
@@ -1331,7 +1336,7 @@ Deno.serve(async (req) => {
     });
   }
   if (taskStatus === "COMPLETED" && typeof taskState.answer === "string") {
-    return respond(200, { ok: true, answer: taskState.answer, modelId: safeText(taskState.modelId, 128) || "saved-result" });
+    return respond(200, { ok: true, answer: sanitizeSarahPublicAnswer(taskState.answer) });
   }
   const readOnlyCapabilityNames = new Set<string>([
     "lookup_customers", "get_customer_profile", "lookup_customer_accounts",
@@ -2668,7 +2673,7 @@ Deno.serve(async (req) => {
     else if (confirmationName === "suspend_admin" || confirmationName === "activate_admin") confirmationAnswer = confirmationName === "suspend_admin" ? "تم إيقاف حساب الأدمن بنجاح." : "تم تفعيل حساب الأدمن بنجاح.";
     else if (confirmationName === "set_customer_active_status") confirmationAnswer = "تم تحديث حالة حساب العميل بنجاح.";
     else if (confirmationName === "send_sms") return pendingTaskResponse();
-    return respond(200, { ok: true, answer: confirmationAnswer, modelId });
+    return respond(200, { ok: true, answer: sanitizeSarahPublicAnswer(confirmationAnswer) });
   }
   const gazaDateParts = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Gaza",
@@ -2692,7 +2697,7 @@ Deno.serve(async (req) => {
     ? `\n\nClient-reported result of the requested manual sync (not independently verified): \${JSON.stringify(localSyncActionResult)}. Do not request another manual sync in this response. If current device status is needed, call get_local_sync_status.`
     : "";
   const currentDatePrompt = `\\n\\nAuthoritative Palestine local date (Asia/Gaza): ${palestineBusinessDate}. For any request referring to today/اليوم, use this exact date for business-day tools; never infer today's date from conversation history or model knowledge. An explicit date stated in the current user message takes precedence.`;
-  const systemPromptWithLocalContext = `${systemPrompt}${currentDatePrompt}${localSyncPrompt}${localActionPrompt}`;
+  const systemPromptWithLocalContext = `${systemPrompt}${currentDatePrompt}${localSyncPrompt}${localActionPrompt}\n\nIDENTITY AND PROVIDER CONFIDENTIALITY: You are Sarah, developed for Charger Point only. Never identify, name, hint at, compare, or disclose any AI provider, model, engine, vendor, operator, hosting company, server location, API, or infrastructure. If asked directly or indirectly, reply only with this exact sentence: ${SARAH_IDENTITY_RESPONSE}`;
 
   const tools = enabledCapabilities.length > 0
     ? [{ functionDeclarations: enabledCapabilities.map((capability) => capability.declaration) }]
@@ -3129,6 +3134,7 @@ Deno.serve(async (req) => {
       answer = extractAnswer(firstCandidate || null);
     }
 
+    answer = sanitizeSarahPublicAnswer(answer);
     if (!answer) return respond(502, { ok: false, error: "AI_EMPTY_RESPONSE" });
     await checkpointTask("COMPLETED", {
       phase: "COMPLETED",
@@ -3138,7 +3144,7 @@ Deno.serve(async (req) => {
       confirmedActions: Array.isArray(taskState.confirmedActions) ? taskState.confirmedActions : [],
       executedCapabilityNames: [...executedCapabilityNames],
     });
-    return respond(200, { ok: true, answer, modelId });
+    return respond(200, { ok: true, answer });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       const retries = Number(taskState.providerRetryCount || 0) + 1;
