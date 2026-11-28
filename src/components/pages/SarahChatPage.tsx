@@ -76,6 +76,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
   const [revealedMessageId, setRevealedMessageId] = useState<string | null>(null);
   const [swipeOffset, setSwipeOffset] = useState<{ id: string; value: number } | null>(null);
   const swipeStartRef = useRef<{ id: string; x: number } | null>(null);
+  const swipeOffsetRef = useRef<{ id: string; value: number } | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const lastObservedTodayRef = useRef(gazaDateKey());
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -137,6 +140,30 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     setDailyConversations([]);
     setDrawerOpen(false);
   }, [session?.userId, session?.authUserId]);
+
+  useEffect(() => {
+    const observeNewDay = () => {
+      const today = gazaDateKey();
+      if (today === lastObservedTodayRef.current) return;
+      lastObservedTodayRef.current = today;
+      if (busy || pendingBinAction) return;
+      setMessages([]);
+      setHydratedDate(null);
+      setSelectedDate(today);
+    };
+    window.addEventListener("focus", observeNewDay);
+    document.addEventListener("visibilitychange", observeNewDay);
+    return () => {
+      window.removeEventListener("focus", observeNewDay);
+      document.removeEventListener("visibilitychange", observeNewDay);
+    };
+  }, [busy, pendingBinAction]);
+
+  useLayoutEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
+  }, [messages, hydratedDate, selectedDate]);
 
   const isCurrent = (accountId: string, operation?: number) => {
     if (!accountId || accountId !== session?.authUserId) return false;
@@ -730,6 +757,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     setDrawerOpen(false);
     setRevealedMessageId(null);
     setSwipeOffset(null);
+    swipeOffsetRef.current = null;
     setMessages([]);
     setHydratedDate(null);
     setSelectedDate(date);
@@ -898,7 +926,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
   if (!canUse) return <div className="p-6 text-center text-sm text-gray-500">لا تملك صلاحية استخدام سارة.</div>;
 
   return (
-    <section dir="rtl" className="relative flex min-h-[100dvh] w-full flex-col gap-4 p-3 sm:p-5">
+    <section dir="rtl" className="relative flex h-[100dvh] max-h-[100dvh] w-full flex-col gap-4 overflow-hidden p-3 sm:p-5">
       <header className="flex items-center justify-between gap-3">
         <button type="button" onClick={() => setDrawerOpen(true)} aria-label="فتح محادثات سارة" className="inline-flex items-center gap-3 rounded-2xl px-2 py-1 text-gray-900 transition hover:bg-gray-100 dark:text-[#daf1de] dark:hover:bg-[#0c312b]">
           <span className="rounded-2xl bg-emerald-100 p-3 text-emerald-700 dark:bg-[#0c312b] dark:text-[#daf1de]"><Sparkles className="h-5 w-5" /></span>
@@ -932,7 +960,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           </div>
         </aside>
       </div>}
-      <div className="flex-1 space-y-3 px-1 py-2">
+      <div ref={messagesContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-1 py-2 scroll-smooth">
         {!messages.length && <p className="py-12 text-center text-sm text-gray-500">احكيلي شو بدك، وبساعدك.</p>}
         {messages.map((message, index) => {
           const identity = messageIdentity(message, index);
@@ -945,13 +973,16 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
               const start = swipeStartRef.current;
               if (!start || start.id !== identity) return;
               const delta = Math.max(-72, Math.min(72, (event.touches[0]?.clientX || start.x) - start.x));
+              swipeOffsetRef.current = { id: identity, value: delta };
               setSwipeOffset({ id: identity, value: delta });
             }}
             onTouchEnd={() => {
               const start = swipeStartRef.current;
-              if (start?.id === identity && Math.abs(swipeOffset?.id === identity ? swipeOffset.value : 0) >= 24) setRevealedMessageId(identity);
+              const moved = swipeOffsetRef.current?.id === identity ? swipeOffsetRef.current.value : 0;
+              if (start?.id === identity && Math.abs(moved) >= 24) setRevealedMessageId(identity);
               else if (start?.id === identity) setRevealedMessageId(null);
               swipeStartRef.current = null;
+              swipeOffsetRef.current = null;
               setSwipeOffset(null);
             }}
             style={{ transform: `translateX(${offset}px)`, transition: offset === 0 ? "transform 180ms ease" : "none", touchAction: "pan-y" }}
