@@ -241,7 +241,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     ];
     setMessages(recoveredMessages);
     void sarahConversationStore.saveDaily(activeAccountId, selectedDate, recoveredMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
-  }, [activeAccountId, hydratedAccount, pending, messages]);
+  }, [activeAccountId, hydratedAccount, pending, messages, selectedDate]);
 
   useEffect(() => {
     if (!activeAccountId || hydratedAccount !== activeAccountId || pendingBinAction) return;
@@ -266,7 +266,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     });
     setBinValue("");
     setBinError("");
-  }, [activeAccountId, hydratedAccount, pending, pendingBinAction, messages]);
+  }, [activeAccountId, hydratedAccount, pending, pendingBinAction, messages, selectedDate]);
 
   const canUse = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("ai:use")));
   const canManageSync = Boolean(session && (session.role === "SUPER_ADMIN" || session.permissions.includes("sync:manage")));
@@ -541,7 +541,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         await sarahInputQueue.transition(accountId, id, "SENT_TO_AI", { resultRef: correlationId });
         const completedMessages = [
           ...baseMessages,
-          { role: "user" as const, text: clean, queueId: id },
+          { role: "user" as const, text: clean, createdAt: new Date().toISOString(), queueId: id },
           { role: "assistant" as const, text: response.answer, createdAt: new Date().toISOString() },
         ];
         await sarahConversationStore.saveDaily(accountId, selectedDate, completedMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate));
@@ -569,6 +569,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           {
             role: "user" as const,
             text: clean,
+            createdAt: new Date().toISOString(),
             status: offline ? "offline" as const : "failed" as const,
             queueId: id,
             statusText: offline ? "بانتظار عودة الاتصال" : "فشلت المهمة",
@@ -699,7 +700,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       void refreshQueue(accountId, accountScopeRef.current.generation);
     }, Math.max(0, nextExpiry - Date.now() + 1000));
     return () => window.clearTimeout(timer);
-  }, [session?.authUserId, hydratedAccount, pending]);
+  }, [session?.authUserId, hydratedAccount, pending, selectedDate]);
 
   useEffect(() => {
     const accountId = session?.authUserId || null;
@@ -722,7 +723,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     window.addEventListener("online", handleOnline);
     if (typeof navigator !== "undefined" && navigator.onLine) void handleOnline();
     return () => window.removeEventListener("online", handleOnline);
-  }, [session?.authUserId, hydratedAccount, busy, messages, pending]);
+  }, [session?.authUserId, hydratedAccount, busy, messages, pending, selectedDate]);
 
   const openDailyConversation = (date: string) => {
     if (busy || pendingBinAction) return;
