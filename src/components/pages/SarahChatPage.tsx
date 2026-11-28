@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUp, Sparkles, AlertCircle, Menu, X, LogOut, MessageSquare } from "lucide-react";
+import { ArrowUp, Sparkles, AlertCircle, X, LogOut, MessageSquare } from "lucide-react";
 import { sarahChatService, SarahPartialTaskError, type SarahPendingBinAction } from "../../services/ai/sarahChatService";
 import { sendSmsUsingSystemDefaultSim } from "../../services/nativeSms";
 import { UserSession } from "../../services/auth/authService";
@@ -84,7 +84,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
   const [showAllConversations, setShowAllConversations] = useState(false);
   const [revealedMessageId, setRevealedMessageId] = useState<string | null>(null);
   const [swipeOffset, setSwipeOffset] = useState<{ id: string; value: number } | null>(null);
-  const swipeStartRef = useRef<{ id: string; x: number } | null>(null);
+  const swipeStartRef = useRef<{ id: string; x: number; y: number; axis: "pending" | "horizontal" | "vertical" } | null>(null);
   const swipeOffsetRef = useRef<{ id: string; value: number } | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement | null>(null);
   const lastObservedTodayRef = useRef(gazaDateKey());
@@ -168,12 +168,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       document.removeEventListener("visibilitychange", observeNewDay);
     };
   }, [busy, pendingBinAction]);
-
-  useLayoutEffect(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    container.scrollTop = container.scrollHeight;
-  }, [messages, hydratedDate, selectedDate]);
 
   const isCurrent = (accountId: string, operation?: number) => {
     if (!accountId || accountId !== session?.authUserId) return false;
@@ -633,9 +627,9 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
       }
     } catch (err) {
       if (isCurrent(accountId, operation)) {
-        setError("");
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
+        setError("");
         const failureMessages: Message[] = [
           ...baseMessages,
           {
@@ -646,12 +640,14 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             queueId: id,
             statusText: offline ? "بانتظار عودة الاتصال" : partialSummary ? "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" : "توقفت قبل وصول الرد النهائي؛ يمكن استكمالها من آخر نقطة محفوظة",
           },
-          ...(partialSummary ? [{
+          {
             role: "assistant" as const,
-            text: partialSummary,
+            text: partialSummary || (offline
+              ? "انقطع الاتصال أثناء إرسال الطلب؛ بقيت المهمة محفوظة ويمكن استكمالها عند عودة الاتصال."
+              : err instanceof Error ? err.message : "تعذر تنفيذ الطلب بسبب خطأ غير معروف."),
             createdAt: new Date().toISOString(),
             queueId: id,
-          }] : []),
+          },
         ];
         setMessages(failureMessages);
         await sarahConversationStore.saveDaily(accountId, selectedDate, failureMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
@@ -745,7 +741,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         .map((item) => item.queueId === record.id
           ? { ...item, status: undefined, statusText: undefined }
           : item);
-      const completedMessages = [...retryMessages, { role: "assistant" as const, text: response.answer, createdAt: new Date().toISOString() }];
+      const completedMessages = [...retryMessages.filter((item) => !(item.role === "assistant" && item.queueId === record.id)), { role: "assistant" as const, text: response.answer, createdAt: new Date().toISOString(), queueId: record.id }];
       await sarahConversationStore.saveDaily(accountId, selectedDate, completedMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate));
       await sarahInputQueue.transition(accountId, record.id, "COMPLETED");
       if (!isCurrent(accountId, operation)) return;
@@ -755,21 +751,17 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         const offline = typeof navigator !== "undefined" && !navigator.onLine;
         try { await sarahInputQueue.transition(accountId, record.id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", { lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED" }); } catch {}
         const partialSummary = err instanceof SarahPartialTaskError ? err.partialSummary : null;
-        setMessages((prev) => {
-          const updated = prev.map((item) => item.queueId === record.id && item.role === "user"
+        const failureExplanation = partialSummary || (offline
+          ? "انقطع الاتصال أثناء استكمال المهمة؛ بقيت الخطوات المحفوظة كما هي."
+          : err instanceof Error ? err.message : "تعذر استكمال المهمة بسبب خطأ غير معروف.");
+        const failureMessages = [
+          ...messages.map((item) => item.queueId === record.id && item.role === "user"
             ? { ...item, status: offline ? "offline" as const : "failed" as const, statusText: offline ? "بانتظار عودة الاتصال" : partialSummary ? "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" : "فشلت المهمة" }
-            : item).filter((item) => !(item.role === "assistant" && item.queueId === record.id));
-          return partialSummary ? [...updated, { role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id }] : updated;
-        });
-        if (partialSummary) {
-          const partialMessages = messages
-            .map((item) => item.queueId === record.id && item.role === "user"
-              ? { ...item, status: "failed" as const, statusText: "توقفت بعد تنفيذ بعض الخطوات؛ راجع التقرير" }
-              : item)
-            .filter((item) => !(item.role === "assistant" && item.queueId === record.id));
-          partialMessages.push({ role: "assistant", text: partialSummary, createdAt: new Date().toISOString(), queueId: record.id });
-          await sarahConversationStore.saveDaily(accountId, selectedDate, partialMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
-        }
+            : item).filter((item) => !(item.role === "assistant" && item.queueId === record.id)),
+          { role: "assistant" as const, text: failureExplanation, createdAt: new Date().toISOString(), queueId: record.id },
+        ];
+        setMessages(failureMessages);
+        await sarahConversationStore.saveDaily(accountId, selectedDate, failureMessages, conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
         setError("");
       }
     } finally {
@@ -865,6 +857,7 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
     }
 
     const operation = accountScopeRef.current.generation;
+    let protectedActionConfirmed = false;
     setBusy(true);
     setError("");
     setBinError("");
@@ -901,8 +894,15 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         return;
       }
 
-      // The protected operation has succeeded. Remove the secure prompt now,
-      // then resume using the exact original request identity (same text/history).
+      // A successful HTTP response alone is not enough: require the server-side
+      // confirmation acknowledgement before clearing the secure prompt permanently.
+      if (confirmationResponse.confirmationApplied !== true) throw new Error("BIN_CONFIRMATION_NOT_ACKNOWLEDGED");
+      // The server has acknowledged the protected mutation. From this point on,
+      // never show the same PIN prompt again: only the saved task continuation may run.
+      protectedActionConfirmed = true;
+      setPendingBinAction(null);
+      setBinValue("");
+      setBinError("");
       await sarahInputQueue.transition(accountId, pendingAction.id, "READY_TO_SEND", {
         pendingBinAction: undefined,
         lastErrorCode: undefined,
@@ -968,18 +968,54 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
         try {
           const rows = await sarahInputQueue.list(accountId);
           const current = rows.find((row) => row.id === pendingAction.id);
-          if (current?.state === "UPLOADING" || current?.state === "SENT_TO_AI") {
+          if (protectedActionConfirmed && current && current.state !== "COMPLETED") {
+            if (current.state === "NEEDS_ATTENTION") {
+              await sarahInputQueue.transition(accountId, pendingAction.id, "READY_TO_SEND", {
+                pendingBinAction: undefined,
+                lastErrorCode: undefined,
+              });
+            }
+            await sarahInputQueue.transition(accountId, pendingAction.id, "NEEDS_ATTENTION", {
+              lastErrorCode: "AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION",
+              pendingBinAction: undefined,
+            });
+          } else if (current?.state === "UPLOADING" || current?.state === "SENT_TO_AI") {
             await sarahInputQueue.transition(accountId, pendingAction.id, offline ? "QUEUED_OFFLINE" : "NEEDS_ATTENTION", {
               lastErrorCode: err instanceof Error ? err.message.slice(0, 80) : "AI_REQUEST_FAILED",
             });
           }
         } catch {}
-        setMessages((prev) => prev.map((item) => item.queueId === pendingAction.id
-          ? { ...item, status: offline ? "offline" : "failed", statusText: offline ? "بانتظار عودة الاتصال" : "توقفت بعد التأكيد؛ يمكن استكمالها من آخر نقطة محفوظة" }
-          : item));
+        const confirmationFailure = protectedActionConfirmed
+          ? "تم تنفيذ العملية بعد التأكيد الأمني. تعذر فقط استكمال الرد أو بقية المهمة؛ لن أعيد تنفيذ العملية الناجحة عند المتابعة."
+          : offline
+            ? "انقطع الاتصال أثناء التأكيد الأمني؛ تحقق من حالة العملية قبل إعادة المحاولة."
+            : err instanceof Error ? err.message : "تعذر إكمال التأكيد الأمني.";
+        setMessages((prev) => [
+          ...prev.map((item) => item.queueId === pendingAction.id
+            ? { ...item, status: offline ? "offline" as const : "failed" as const, statusText: offline ? "بانتظار عودة الاتصال" : protectedActionConfirmed ? "تم تنفيذ العملية المحمية؛ تعذر استكمال الرد النهائي" : "توقفت المهمة قبل تأكيد نجاح العملية" }
+            : item).filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)),
+          { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
+        ]);
+        const confirmationTranscript = pendingAction.baseMessages.some(
+          (item) => item.role === "user" && item.text === pendingAction.text
+        ) ? pendingAction.baseMessages : [
+          ...pendingAction.baseMessages,
+          { role: "user" as const, text: pendingAction.text, createdAt: pendingAction.createdAt, queueId: pendingAction.id, status: "failed" as const },
+        ];
+        await sarahConversationStore.saveDaily(accountId, selectedDate, [
+          ...confirmationTranscript.filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)),
+          { role: "assistant", text: confirmationFailure, createdAt: new Date().toISOString(), queueId: pendingAction.id },
+        ], conversationGenerationRef.current, dailyConversationTitle(selectedDate)).catch(() => undefined);
+        setError("");
         setPendingBinAction(null);
         setBinValue("");
         setBinError("");
+        if (protectedActionConfirmed) {
+          const notice = "تم تنفيذ العملية بعد التأكيد الأمني. تعذر فقط استكمال الرد أو بقية المهمة؛ لن أعيد تنفيذ العملية الناجحة عند المتابعة.";
+          setMessages((prev) => [...prev.filter((item) => !(item.role === "assistant" && item.queueId === pendingAction.id)), {
+            role: "assistant", text: notice, createdAt: new Date().toISOString(), queueId: pendingAction.id,
+          }]);
+        }
       }
     } finally {
       setBinValue("");
@@ -999,7 +1035,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
           <span className="rounded-2xl bg-emerald-100 p-3 text-emerald-700 dark:bg-[#0c312b] dark:text-[#daf1de]"><Sparkles className="h-5 w-5" /></span>
           <span className="font-bold text-lg">سارة</span>
         </button>
-        <button type="button" onClick={() => setDrawerOpen(true)} aria-label="قائمة المحادثات" className="rounded-xl p-3 text-gray-600 hover:bg-gray-100 dark:text-[#daf1de] dark:hover:bg-[#0c312b]"><Menu className="h-5 w-5" /></button>
       </header>
       {drawerOpen && <div className="fixed inset-0 z-[100] bg-black/45" onClick={() => setDrawerOpen(false)}>
         <aside dir="rtl" className="absolute inset-y-0 right-0 flex w-[min(88vw,360px)] flex-col border-l border-gray-200 bg-white p-4 shadow-2xl dark:border-[#123832] dark:bg-[#061f1c]" onClick={(event) => event.stopPropagation()}>
@@ -1020,39 +1055,59 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             {!dailyConversations.length && <p className="px-2 py-5 text-center text-xs text-gray-500">لا توجد محادثات سابقة.</p>}
             {dailyConversations.length > 7 && <button type="button" onClick={() => setShowAllConversations((value) => !value)} className="w-full rounded-xl px-3 py-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-[#0c312b]">{showAllConversations ? "عرض آخر 7 أيام" : "إظهار المزيد"}</button>}
           </div>
-          <div className="mt-4 border-t border-gray-200 pt-3 dark:border-[#123832]">
-            <button type="button" onClick={() => { setDrawerOpen(false); onExit?.(); }} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold text-red-600 hover:bg-red-50 dark:text-red-300 dark:hover:bg-red-950/20">
-              <LogOut className="h-4 w-4" /> خروج من سارة
+          <div className="mt-4 flex justify-center border-t border-gray-200 pt-4 dark:border-[#123832]">
+            <button type="button" onClick={() => { setDrawerOpen(false); onExit?.(); }} className="inline-flex min-w-36 items-center justify-center gap-2 rounded-full border border-red-200 px-6 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30">
+              <LogOut className="h-4 w-4" /> خروج
             </button>
           </div>
         </aside>
       </div>}
-      <div ref={messagesContainerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-1 py-2 scroll-smooth">
+      <div ref={messagesContainerRef} className="min-h-0 flex-1 flex flex-col-reverse gap-3 overflow-y-auto overscroll-contain px-1 py-2">
         {!messages.length && <p className="py-12 text-center text-sm text-gray-500">احكيلي شو بدك، وبساعدك.</p>}
-        {messages.map((message, index) => {
-          const identity = messageIdentity(message, index);
+        {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
+        {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
+        {messages.slice().reverse().map((message, index) => {
+          const identity = messageIdentity(message, messages.length - 1 - index);
           const revealed = revealedMessageId === identity;
           const offset = swipeOffset?.id === identity ? swipeOffset.value : 0;
           const time = messageTime(message.createdAt);
           const bubble = <div
-            onTouchStart={(event) => { swipeStartRef.current = { id: identity, x: event.touches[0]?.clientX || 0 }; }}
+            onTouchStart={(event) => {
+              const touch = event.touches[0];
+              if (!touch) return;
+              swipeStartRef.current = { id: identity, x: touch.clientX, y: touch.clientY, axis: "pending" };
+              swipeOffsetRef.current = null;
+            }}
             onTouchMove={(event) => {
               const start = swipeStartRef.current;
-              if (!start || start.id !== identity) return;
-              const delta = Math.max(-72, Math.min(72, (event.touches[0]?.clientX || start.x) - start.x));
+              const touch = event.touches[0];
+              if (!start || start.id !== identity || !touch) return;
+              const deltaX = touch.clientX - start.x;
+              const deltaY = touch.clientY - start.y;
+              if (start.axis === "pending" && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
+                start.axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.2 ? "horizontal" : "vertical";
+              }
+              if (start.axis !== "horizontal") return;
+              const delta = Math.max(-72, Math.min(72, deltaX));
               swipeOffsetRef.current = { id: identity, value: delta };
               setSwipeOffset({ id: identity, value: delta });
             }}
             onTouchEnd={() => {
               const start = swipeStartRef.current;
               const moved = swipeOffsetRef.current?.id === identity ? swipeOffsetRef.current.value : 0;
-              if (start?.id === identity && Math.abs(moved) >= 24) setRevealedMessageId(identity);
+              if (start?.id === identity && start.axis === "horizontal" && Math.abs(moved) >= 24) setRevealedMessageId(identity);
               else if (start?.id === identity) setRevealedMessageId(null);
               swipeStartRef.current = null;
               swipeOffsetRef.current = null;
               setSwipeOffset(null);
             }}
-            style={{ transform: `translateX(${offset}px)`, transition: offset === 0 ? "transform 180ms ease" : "none", touchAction: "pan-y" }}
+            onTouchCancel={() => {
+              if (swipeStartRef.current?.id !== identity) return;
+              swipeStartRef.current = null;
+              swipeOffsetRef.current = null;
+              setSwipeOffset(null);
+            }}
+            style={{ transform: `translateX(${offset}px)`, transition: offset === 0 ? "transform 180ms ease" : "none", touchAction: "pan-y", willChange: offset !== 0 ? "transform" : undefined }}
             className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-7 ${message.role === "user" ? "ms-auto bg-emerald-600 text-white" : "me-auto bg-gray-100 text-gray-900 dark:bg-[#0c312b] dark:text-[#daf1de]"}`}>
             {message.text}
             {message.statusText && <div className="mt-1 text-[11px] opacity-80">{message.statusText}</div>}
@@ -1070,8 +1125,6 @@ export const SarahChatPage: React.FC<{ session: UserSession | null; onExit?: () 
             {message.role === "user" && timeNode}
           </div>;
         })}
-        {busy && <div className="text-sm text-gray-500 animate-pulse">سارة بتفكر...</div>}
-        {error && <div className="flex items-start gap-2 rounded-xl bg-red-50 p-3 text-sm text-red-700 dark:bg-red-950/30 dark:text-red-300"><AlertCircle className="h-4 w-4 shrink-0" /><span>{error}</span></div>}
       </div>
       {pendingBinAction && <div className="rounded-2xl border border-amber-400/60 bg-amber-50 p-4 text-sm dark:bg-amber-950/20">
         <div className="mb-1 font-semibold">تأكيد أمني مطلوب</div>

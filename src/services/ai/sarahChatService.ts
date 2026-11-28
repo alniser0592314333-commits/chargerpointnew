@@ -11,6 +11,7 @@ export interface SarahPendingBinAction {
 export interface SarahPartialProgressStep {
   capability: string;
   status: "succeeded" | "failed" | "not_executed" | "pending";
+  reasonCode?: string;
 }
 
 export class SarahPartialTaskError extends Error {
@@ -91,13 +92,31 @@ const formatPartialProgress = (value: unknown): string | null => {
   const groups: Record<SarahPartialProgressStep["status"], string[]> = {
     succeeded: [], failed: [], not_executed: [], pending: [],
   };
+  const failureReasons: Record<string, string> = {
+    AI_CAPABILITY_PERMISSION_REQUIRED: "الصلاحية المطلوبة غير متاحة",
+    AI_CAPABILITY_PERMISSION_REVOKED: "تم رفض العملية بسبب الصلاحيات",
+    AI_CAPABILITY_TARGET_NOT_FOUND: "العميل أو الطلب أو العنصر غير موجود",
+    AI_CAPABILITY_STALE_DATA: "البيانات تغيرت منذ قراءتها",
+    AI_CAPABILITY_DATABASE_RULE_REJECTED: "قاعدة عمل في قاعدة البيانات منعت التنفيذ",
+    AI_CAPABILITY_CONFLICT: "يوجد تعارض في حالة السجل",
+    AI_CAPABILITY_INPUT_INVALID: "البيانات المدخلة غير صحيحة",
+    BIN_REQUIRED: "تحتاج إلى تأكيد أمني",
+    BIN_INVALID: "رمز التأكيد غير صحيح",
+    ACTION_FAILED: "تعذر تنفيذ العملية لسبب غير محدد",
+  };
   for (const item of rawSteps) {
     if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const step = item as Record<string, unknown>;
     const capability = typeof step.capability === "string" ? step.capability : "";
     const status = step.status;
     if (!capability || typeof status !== "string" || !(status in groups)) continue;
-    groups[status as SarahPartialProgressStep["status"]].push(labels[capability] || "عملية أخرى");
+    const label = labels[capability] || "عملية أخرى";
+    if (status === "failed") {
+      const reasonCode = typeof step.reasonCode === "string" ? step.reasonCode : "";
+      groups.failed.push(`${label}${failureReasons[reasonCode] ? `: ${failureReasons[reasonCode]}` : ""}`);
+    } else {
+      groups[status as SarahPartialProgressStep["status"]].push(label);
+    }
   }
   if (!groups.succeeded.length && !groups.failed.length) return null;
   const lines = ["ملخص التنفيذ قبل التوقف:"];
@@ -120,6 +139,7 @@ export interface SarahChatResponse {
   requiresLocalSync?: boolean;
   localSyncAction?: "manual_sync";
   taskPending?: boolean;
+  confirmationApplied?: boolean;
   retryAfterMs?: number;
 }
 
@@ -284,18 +304,125 @@ export const sarahChatService = {
     }
     if (!response.ok || data.ok !== true) {
       const code = typeof data.error === "string" ? data.error : "AI_REQUEST_FAILED";
+      const reasonCode = typeof data.reasonCode === "string" ? data.reasonCode : "";
       const partialSummary = formatPartialProgress(data.partialProgress);
       if (partialSummary) throw new SarahPartialTaskError(code, partialSummary);
       const friendly: Record<string, string> = {
+        METHOD_NOT_ALLOWED: "طريقة إرسال الطلب غير مدعومة.",
+        SERVICE_UNAVAILABLE: "خدمة سارة غير متاحة مؤقتًا. لم يتم تأكيد تنفيذ العملية.",
+        ADMIN_SESSION_UNAVAILABLE: "انتهت جلسة الأدمن أو لم تعد صالحة. سجّل الدخول مجددًا ثم تحقق من حالة العملية قبل تكرارها.",
+        ADMIN_PERMISSION_CONTEXT_UNAVAILABLE: "تعذر التحقق من صلاحيات حسابك من قاعدة البيانات؛ أوقفت سارة التنفيذ احترازيًا.",
+        AI_USE_PERMISSION_REQUIRED: "صلاحية استخدام سارة غير ممنوحة لهذا الحساب.",
+        AI_PROVIDER_NOT_CONFIGURED: "إعدادات مزود الذكاء الاصطناعي غير مكتملة أو معطلة.",
+        PROVIDER_CREDENTIAL_UNAVAILABLE: "تعذر الوصول إلى مفتاح مزود الذكاء الاصطناعي من التخزين الآمن.",
+        AI_PROVIDER_CONFIGURATION_INVALID: "إعدادات النموذج تحتوي قيمة غير صالحة.",
+        AI_REQUEST_TIMEOUT: "انتهت مهلة استجابة مزود الذكاء الاصطناعي. تم حفظ التقدم المؤكد.",
+        AI_TASK_INTERRUPTED: "انقطع تنفيذ المهمة. تحقّق التقدم المحفوظ قبل استكمال الخطوات غير المنفذة.",
+        AI_TASK_HISTORY_UNAVAILABLE: "تعذر قراءة سجل المهام السابقة؛ لم يتم تنفيذ أي إجراء بناءً على سجل غير متاح.",
+        AI_CAPABILITY_INPUT_INVALID: "بيانات العملية غير مكتملة أو بصيغة غير صحيحة. راجع الحقول المطلوبة والقيمة المدخلة.",
+        INVALID_REQUEST_BODY: "تعذر قراءة محتوى الطلب؛ أعد إرسال الرسالة دون مرفقات أو بيانات غير مدعومة.",
+        SUPABASE_NOT_CONFIGURED: "لم يتم إعداد اتصال قاعدة البيانات في هذه النسخة من التطبيق.",
+        AUTH_IDENTITY_REQUIRED: "تعذر تحديد حساب الدخول الحالي؛ أعد تسجيل الدخول.",
+        AUTH_SESSION_REQUIRED: "لا توجد جلسة دخول صالحة؛ سجّل الدخول ثم أعد فحص حالة العملية.",
+        AUTH_TOKEN_REFRESH_FAILED: "تعذر تجديد جلسة الدخول؛ تحقق من اتصال الإنترنت ثم سجّل الدخول مجددًا.",
+        TEXT_TOO_LARGE: "الطلب أطول من الحد المسموح؛ اختصر الرسالة ثم أعد إرسالها.",
+        BIN_FORMAT_INVALID: "صيغة BIN غير صحيحة؛ أدخل الأرقام في نافذة التأكيد الأمني فقط.",
+        QUEUE_UNAVAILABLE: "تعذر الوصول إلى سجل المهام المحفوظ على هذا الجهاز؛ لم تُرسل المهمة.",
+        DURABLE_STORAGE_UNAVAILABLE: "التخزين المحلي الآمن غير متاح؛ لم تحفظ سارة المهمة ولم تبدأ تنفيذها.",
+        DURABLE_STORAGE_UPGRADE_BLOCKED: "هناك تبويب آخر يمنع تحديث مخزن المهام؛ أغلق التبويبات القديمة ثم أعد المحاولة.",
+        QUEUE_TRANSITION_REJECTED: "تغيرت حالة المهمة بطريقة لا تسمح بالانتقال المطلوب؛ أوقفت سارة التنفيذ لحماية عدم التكرار.",
+        QUEUE_WRITE_FAILED: "تعذر حفظ حالة المهمة على الجهاز؛ تحقق من مساحة التخزين ثم أعد فتح سارة.",
+        QUEUE_WRITE_ABORTED: "أُلغي حفظ المهمة محليًا قبل اكتماله؛ لم تعتبر سارة العملية مكتملة.",
+        QUEUE_PENDING_LIMIT_REACHED: "يوجد عدد كبير من المهام غير المكتملة؛ أكمل أو راجع المهام السابقة قبل إضافة مهمة جديدة.",
+        QUEUE_CAPACITY_CHECK_FAILED: "تعذر التحقق من مساحة قائمة المهام؛ لم تبدأ سارة مهمة جديدة.",
+        QUEUE_SEQUENCE_READ_FAILED: "تعذر قراءة تسلسل المهام المحلي؛ لم يتم إنشاء مهمة مكررة.",
+        UPLOAD_INTERRUPTED_REQUIRES_REVIEW: "انقطع إرسال المهمة قبل معرفة نتيجة الخادم؛ افحص الحالة المحفوظة قبل إعادة المحاولة.",
+        TRANSCRIPT_SAVE_INTERRUPTED: "نجح إرسال المهمة لكن تعذر حفظ المحادثة؛ ستستعيد سارة الرد من نقطة الحفظ.",
+        AI_TASK_INTERRUPTED_AFTER_CONFIRMED_ACTION: "تم تنفيذ العملية المحمية؛ تعذر فقط استكمال الرد. المتابعة لن تعيد تنفيذ العملية الناجحة.",
+
+        TEXT_REQUIRED: "اكتب طلبًا واضحًا لسارة قبل الإرسال.",
+        ADMIN_PERMISSION_CACHE_INCONSISTENT: "تعذر مطابقة نسخة الصلاحيات الحالية مع سجل الحساب؛ أوقفت سارة التنفيذ لحين تحديث السياق.",
+        SMS_RECIPIENT_REQUIRED: "حدد رقم هاتف أو اسم عميل مسجل لإرسال الرسالة.",
+        CUSTOMER_LOOKUP_QUERY_INVALID: "صيغة البحث عن العميل غير صحيحة؛ أدخل جزءًا واضحًا من الاسم أو رمز العميل.",
+        CUSTOMER_PROFILE_QUERY_INVALID: "تعذر قراءة ملف العميل لأن رمز العميل أو بيانات المطابقة غير صالحة.",
+        CUSTOMER_FINANCIAL_HISTORY_INPUT_INVALID: "تعذر قراءة السجل المالي؛ بيانات العميل أو الفترة المطلوبة غير صحيحة.",
+        CUSTOMER_FINANCIAL_ADJUSTMENT_INPUT_INVALID: "التسوية المالية تحتوي إجراءً أو مبلغًا أو مرجعًا غير صالح.",
+        BUSINESS_DATE_INVALID: "التاريخ المطلوب غير صالح؛ استخدم تاريخًا صحيحًا.",
+        ORDER_RENUMBER_INPUT_INVALID: "تعذر إعادة ترتيب الطلبات؛ التاريخ أو قائمة الطلبات تحتوي قيماً غير صحيحة أو مكررة.",
+        CUSTOMER_QUERY_INVALID: "صيغة البحث عن العملاء غير صحيحة أو قصيرة جدًا.",
+        DEBTOR_QUERY_INVALID: "قيمة حد الدين أو معيار البحث عن المدينين غير صالحة.",
+        ORDER_INPUT_INVALID: "بيانات الطلب غير مكتملة أو غير صالحة؛ راجع العميل والعناصر والتاريخ.",
+        ORDER_ITEM_INVALID: "أحد عناصر الطلب غير صالح أو لا يطابق نوع الجهاز المحدد.",
+        MANUAL_PRICE_INVALID: "السعر اليدوي غير صالح؛ يجب أن يكون مبلغًا موجبًا بالشيكل.",
+        ORDER_NOTES_INVALID: "ملاحظات الطلب أطول من الحد المسموح أو تحتوي أحرفًا غير مقبولة.",
+        CUSTOMER_ACCOUNT_LOOKUP_INPUT_INVALID: "بيانات البحث عن حساب العميل غير صالحة.",
+        CUSTOMER_ACCOUNT_STATUS_INPUT_INVALID: "تعذر تغيير حالة العميل؛ الرمز أو الحالة المطلوبة غير صالحين.",
+        CUSTOMER_PROTECTED_SETTINGS_INPUT_INVALID: "بيانات الإعدادات المالية المحمية غير مكتملة أو غير صالحة.",
+        CUSTOMER_UPDATE_INPUT_INVALID: "بيانات تعديل العميل غير صالحة أو لا تحتوي حقلاً مطلوبًا للتعديل.",
+        DEVICE_CREATE_INPUT_INVALID: "بيانات نوع الجهاز الجديد غير مكتملة أو غير صالحة.",
+        DEVICE_UPDATE_INPUT_INVALID: "بيانات تعديل نوع الجهاز أو السعر أو الإصدار غير صالحة.",
+        CUSTOMER_CREATE_INPUT_INVALID: "بيانات العميل الجديد غير مكتملة أو غير صالحة.",
+        PAYMENT_INPUT_INVALID: "بيانات الدفعة غير صالحة؛ تحقق من العميل والمبلغ والملاحظة.",
+        PAYMENT_REVIEW_INPUT_INVALID: "بيانات اعتماد الدفعة المعلقة غير صالحة أو لا تحدد دفعة معروفة.",
+        PAYMENT_REJECTION_INPUT_INVALID: "تعذر رفض الدفعة؛ يلزم تحديد الدفعة وسبب الرفض.",
+        ADD_ORDER_ITEM_INPUT_INVALID: "بيانات العنصر المراد إضافته إلى الطلب غير صالحة.",
+        ORDER_ACTION_INPUT_INVALID: "بيانات التسليم أو الإلغاء غير صالحة؛ تعذر تحديد العنصر المطلوب.",
+        HISTORY_REVIEW_INPUT_INVALID: "طلب مراجعة سجل العميل غير صالح أو لم يعد متاحًا.",
+        GOAL_CUSTOMER_ID_INVALID: "العميل المرتبط بالهدف غير صالح؛ لم يتم إنشاء الهدف.",
+        GOAL_ACTION_INPUT_INVALID: "بيانات الهدف أو الطلب أو الكمية أو المدة غير صالحة.",
+        ADMIN_TARGET_INVALID: "حساب الأدمن المحدد غير صالح أو غير موجود ضمن الحسابات المسموح بإدارتها.",
+        ADMIN_PERMISSION_INPUT_INVALID: "تعديل الصلاحية غير صالح؛ لم يتم تغيير أي صلاحية.",
+        BUSINESS_HOURS_INPUT_INVALID: "إعدادات ساعات العمل غير مكتملة أو غير صالحة.",
+        BUSINESS_HOURS_TIME_INVALID: "وقت بداية أو نهاية الدوام غير صالح.",
+        JAWAL_PAY_RECIPIENT_INVALID: "رقم أو بيانات مستلم جوال باي غير صالحة.",
+        AI_PROVIDER_TEMPERATURE_INVALID: "درجة حرارة النموذج خارج النطاق المسموح.",
+        AI_PROVIDER_TOKEN_LIMIT_INVALID: "الحد الأقصى لرموز رد النموذج خارج النطاق المسموح.",
+        AI_PROVIDER_TIMEOUT_INVALID: "مهلة استجابة النموذج يجب أن تكون بين 5 و120 ثانية.",
+        AI_PROVIDER_SETTINGS_INPUT_INVALID: "إعدادات مزود الذكاء الاصطناعي غير مكتملة أو غير صالحة.",
+        GOALS_QUERY_INVALID: "معايير قراءة الأهداف غير صالحة.",
+        READ_PREREQUISITES_REQUIRED: "لم تكتمل خطوة القراءة المطلوبة قبل التعديل؛ لم تنفذ سارة العملية.",
+        MUTATION_DEFERRED_UNTIL_READS_COMPLETE: "أجلت سارة التعديل حتى تتحقق من بيانات العميل أو الطلب المطلوبة أولًا.",
+        PENDING_ACTION_NOT_FOUND: "لم تعد خطوة التأكيد الأمني موجودة في قائمة المهام الحالية؛ يلزم فحص حالة العملية.",
+        BIN_CONFIRMATION_NOT_ACKNOWLEDGED: "لم يصل تأكيد موثوق من الخادم على نجاح عملية BIN؛ لم تعتبر سارة العملية ناجحة.",
+        ACCOUNT_CHANGED: "تغير الحساب أثناء تنفيذ العملية؛ أوقفت سارة الطلب لمنع استخدام جلسة حساب آخر.",
+        SYNC_MANAGE_PERMISSION_REQUIRED: "حسابك لا يملك صلاحية إدارة المزامنة.",
+
+        AI_CAPABILITY_NOT_FOUND: "لم يتم العثور على السجل أو العنصر المطلوب، أو أن مرجعه لم يعد صالحًا.",
+        AI_CAPABILITY_UNAVAILABLE: "تعذر على قاعدة البيانات إكمال العملية بسبب خطأ داخلي. لم تعتبر سارة العملية ناجحة.",
+        AI_DEVICE_DEFAULT_UNAVAILABLE: "تعذر العثور على نوع الهاتف الافتراضي (شاومي) في قائمة الأجهزة النشطة.",
+        AI_TOOL_RATE_LIMITED: "رفض النظام تنفيذ المزيد من استدعاءات الأدوات ضمن هذه العملية.",
+        AI_RATE_LIMITED: "وصل الطلب إلى حد الاستخدام المؤقت. حاول لاحقًا.",
+        AI_DAILY_LIMIT_REACHED: "وصل الطلب إلى حد الاستخدام اليومي.",
+        GEMINI_QUOTA_OR_RATE_LIMIT: "مزود Gemini رفض الطلب بسبب حد الاستخدام أو معدل الطلبات.",
+        GEMINI_PROVIDER_UNAVAILABLE: "مزود Gemini غير متاح حاليًا.",
+        GEMINI_REQUEST_REJECTED: "رفض مزود Gemini الطلب؛ راجع إعدادات النموذج أو صيغة الطلب.",
+        AI_INVALID_PROVIDER_RESPONSE: "وصل رد غير مفهوم من مزود الذكاء الاصطناعي.",
+        AI_EMPTY_RESPONSE: "لم يُرجع النموذج ردًا. لم تعتبر سارة أي خطوة غير مؤكدة ناجحة.",
+        AI_PROVIDER_RESPONSE_TOO_LARGE: "رد مزود الذكاء الاصطناعي تجاوز الحجم المسموح.",
+        AI_TOOL_UNKNOWN: "طلب النموذج أداة غير مسجلة؛ تم رفضها ولم تُنفذ.",
+        AI_CAPABILITY_CONFLICT: "رفضت قاعدة البيانات العملية بسبب تعارض في حالة السجل أو شرط عمل. راجع الحالة الحالية قبل إعادة المحاولة.",
+        AI_CAPABILITY_TARGET_NOT_FOUND: "لم يتم العثور على الهدف المطلوب. تأكد من العميل أو الطلب أو العنصر المحدد.",
+        AI_CAPABILITY_STALE_DATA: "تغيرت البيانات منذ قراءتها؛ أعد تحميلها ثم أعد تحديد الإجراء المطلوب.",
+        AI_CAPABILITY_DATABASE_RULE_REJECTED: "قاعدة البيانات رفضت العملية بسبب قاعدة عمل أو حالة غير مسموح بها.",
+        AI_CAPABILITY_PERMISSION_REVOKED: "الصلاحية المطلوبة غير متاحة لهذا الحساب أو تم سحبها قبل التنفيذ.",
+        BIN_REQUIRED: "تتطلب هذه الخطوة تأكيدًا أمنيًا عبر نافذة BIN.",
+        BIN_INVALID: "رمز BIN غير صحيح. لم تُعتمد العملية بهذا الرمز.",
+        BIN_CONFIRMATION_EXPIRED: "انتهت صلاحية طلب التأكيد الأمني؛ ابدأ العملية من جديد بعد التحقق من حالتها.",
+        BIN_CONFIRMATION_INVALID: "تعذر التحقق من رمز التأكيد المرتبط بهذه العملية أو أنه لا يخص الجلسة الحالية.",
+        LOCAL_SYNC_REQUIRED: "تتطلب هذه الخطوة تنفيذ مزامنة محلية على الجهاز.",
+        SMS_CUSTOMER_NOT_FOUND: "لم يتم العثور على العميل المطلوب لإرسال الرسالة.",
+        SMS_CUSTOMER_PHONE_MISSING: "لا يوجد رقم هاتف مسجل للعميل المحدد.",
+        SMS_PHONE_INVALID: "رقم الهاتف غير صالح.",
+        SMS_MESSAGE_INVALID: "نص الرسالة فارغ أو يتجاوز الحد المسموح.",
+        REQUEST_TOO_LARGE: "حجم الطلب أكبر من الحد المسموح.",
+        INVALID_REQUEST: "صيغة الطلب المرسل غير صحيحة.",
+        INVALID_HISTORY: "تعذر قراءة سجل المحادثة بسبب بيانات غير صالحة.",
+        HISTORY_TOO_LARGE: "سجل المحادثة أطول من الحد المسموح.",
         AI_TOOL_CALL_BATCH_NOT_SAFE: "تعذر ترتيب بعض خطوات الطلب بأمان. لم تُنفذ الخطوات غير المؤكدة؛ أعد المحاولة وسيُعاد فحص المتطلبات قبل التنفيذ.",
         AI_CAPABILITY_PERMISSION_REQUIRED: "صلاحيات حسابك الحالية لا تسمح بهذا الإجراء.",
-        AI_TOOL_UNKNOWN: "تعذر التعرّف على الإجراء المطلوب. لم يتم تنفيذ أي تغيير.",
         AI_TOOL_CALL_NOT_ALLOWED: "الأداة المطلوبة غير متاحة لهذا الحساب. لم يتم تنفيذ أي تغيير.",
         AI_TOOL_CALL_LIMIT_REACHED: "توقفت دورة التنفيذ قبل اكتمال جميع الخطوات. أعد متابعة الطلب نفسه؛ ستُراجع النتائج السابقة قبل إعادة أي عملية.",
         AI_CUSTOMER_NEEDS_DISAMBIGUATION: "وجدت أكثر من عميل مطابق. حدّد العميل المقصود قبل المتابعة.",
-        AI_CAPABILITY_CONFLICT: "لم يتم تنفيذ العملية بسبب تعارض أو نقص في البيانات. لم يتم تأكيد أي تغيير.",
-        BIN_CONFIRMATION_INVALID: "تعذر استعادة العملية الأمنية. أعد طلب العملية من جديد.",
-        BIN_CONFIRMATION_EXPIRED: "انتهت صلاحية التأكيد الأمني. أعد طلب العملية من جديد.",
         AI_TASK_CHECKPOINT_UNAVAILABLE: "تعذر استعادة المهمة السابقة ضمن جلسة الدخول الحالية. لم أعد تنفيذ العمليات تلقائيًا؛ راجع حالة المهمة قبل إرسال طلب جديد.",
         AI_TASK_CHECKPOINT_INVALID: "تعذر التحقق من سجل متابعة المهمة. لم يتم اعتماد أي نتيجة غير مؤكدة.",
         AI_TASK_CHECKPOINT_WRITE_FAILED: "تعذر حفظ تقدم المهمة بأمان. يمكنك إعادة المحاولة؛ ستُراجع النتائج المحفوظة قبل تنفيذ أي خطوة مرة أخرى.",
@@ -305,22 +432,18 @@ export const sarahChatService = {
         SMS_CUSTOMER_LOOKUP_PERMISSION_REQUIRED: "لإرسال رسالة باسم العميل، يحتاج الحساب إلى صلاحية عرض العملاء بالإضافة إلى صلاحية إرسال SMS.",
         SMS_CUSTOMER_LOOKUP_FAILED: "تعذر التحقق من رقم العميل بأمان. لم يتم إرسال الرسالة.",
         SMS_CUSTOMER_AMBIGUOUS: "وجدت أكثر من عميل بهذا الاسم. حدّد الاسم بشكل أدق قبل الإرسال.",
-        SMS_CUSTOMER_PHONE_MISSING: "العميل المحدد لا يحتوي على رقم هاتف مسجل.",
-        SMS_CUSTOMER_NOT_FOUND: "لم أجد عميلاً نشطًا بهذا الاسم.",
         SMS_IDEMPOTENCY_STORAGE_UNAVAILABLE: "لم أرسل الرسالة لأن التطبيق لم يستطع حفظ حماية منع التكرار.",
         SMS_SUBMISSION_UNCERTAIN: "حالة إرسال الرسالة غير محسومة بسبب انقطاع سابق. لم أعد إرسالها حتى لا تصل مكررة؛ تحقق من الرسائل الصادرة في الهاتف.",
         SMS_PERMISSION_DENIED: "لم يمنح Android إذن إرسال الرسائل النصية. لم يتم الإرسال.",
         NO_DEFAULT_SMS_SIM: "لا توجد شريحة افتراضية محددة لإرسال الرسائل.",
-        SMS_PHONE_INVALID: "رقم الهاتف غير صالح. لم يتم الإرسال.",
-        SMS_MESSAGE_INVALID: "نص الرسالة فارغ أو أطول من الحد المسموح.",
         SMS_AVAILABLE_IN_ADMIN_ANDROID_APK_ONLY: "إرسال SMS متاح من تطبيق الأدمن على Android فقط.",
 
       };
-      throw new Error(friendly[code] || code);
+      throw new Error(friendly[reasonCode] || friendly[code] || "حدث خطأ غير مصنف أثناء تنفيذ الخطوة؛ لم تعتبر سارة العملية ناجحة. تحقق من حالة السجل قبل إعادة المحاولة.");
     }
     if (typeof data.answer !== "string" || typeof data.modelId !== "string") {
       throw new Error("AI_SETTINGS_INVALID_RESPONSE");
     }
-    return { answer: data.answer, modelId: data.modelId };
+    return { answer: data.answer, modelId: data.modelId, confirmationApplied: confirmationAction ? data.confirmationApplied === true : false };
   },
 };

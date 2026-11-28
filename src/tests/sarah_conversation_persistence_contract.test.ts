@@ -78,7 +78,8 @@ describe("Sarah daily conversation persistence", () => {
   it("opens Sarah as a standalone authenticated workspace and exits back to the app home", () => {
     expect(app).toContain('onExit={() => navigate("/app", true)}');
     expect(app).toContain("parseRoute(currentPath).pathname === '/app/sarah'");
-    expect(page).toContain("خروج من سارة");
+    expect(page).toContain("خروج");
+    expect(page).not.toContain("خروج من سارة");
     expect(page).toContain("فتح محادثات سارة");
   });
 
@@ -95,6 +96,21 @@ describe("Sarah daily conversation persistence", () => {
     expect(page).toContain("onTouchMove");
     expect(page).toContain("onTouchEnd");
     expect(page).toContain("messageTime(message.createdAt)");
+  });
+
+  it("opens conversations at the latest message and scrolls upward for older history", () => {
+    expect(page).toContain("flex flex-col-reverse gap-3 overflow-y-auto");
+    expect(page).toContain("messages.slice().reverse().map");
+    expect(page).not.toContain("scroll-smooth");
+    expect(page).not.toContain("container.scrollTop = container.scrollHeight");
+  });
+
+  it("locks timestamp reveal to horizontal swipes and always resets interrupted gestures", () => {
+    expect(page).toContain('axis: "pending" | "horizontal" | "vertical"');
+    expect(page).toContain('start.axis = Math.abs(deltaX) > Math.abs(deltaY) * 1.2 ? "horizontal" : "vertical"');
+    expect(page).toContain("onTouchCancel");
+    expect(page).toContain("swipeOffsetRef.current = null");
+    expect(page).toContain("touchAction: \"pan-y\"");
   });
 
   it("keeps Sarah's header to the name only without Gemini branding or a description", () => {

@@ -162,7 +162,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ''
           VITE_SUPABASE_ANON_KEY: ''
-        run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts src/tests/sarah_order_defaults_bin_contract.test.ts src/tests/sarah_account_operation_scope.test.ts src/tests/sarah_account_switch_isolation_contract.test.ts src/tests/sarah_conversation_persistence_contract.test.ts src/tests/sarah_history_bounds.test.ts src/tests/sarah_input_queue_contract.test.ts src/tests/sarah_input_queue_multitab.test.ts
+        run: npx vitest run supabase/tests/sarah_ai_chat_contract.test.ts src/tests/sarah_order_defaults_bin_contract.test.ts src/tests/sarah_account_operation_scope.test.ts src/tests/sarah_account_switch_isolation_contract.test.ts src/tests/sarah_conversation_persistence_contract.test.ts src/tests/sarah_history_bounds.test.ts src/tests/sarah_input_queue_contract.test.ts src/tests/sarah_input_queue_multitab.test.ts src/tests/sarah_confirmation_recovery_contract.test.ts
 
       - name: Run Sarah permission epoch invalidation contracts
         env:
