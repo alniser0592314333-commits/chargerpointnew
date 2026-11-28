@@ -804,7 +804,7 @@ export default function App() {
       case '/app/sarah': {
         const allowed = Boolean(userSession && (userSession.role === 'SUPER_ADMIN' || userSession.permissions.includes('ai:use')));
         if (!allowed) return <UnauthorizedPage />;
-        return <SarahChatPage session={userSession} />;
+        return <SarahChatPage session={userSession} onExit={() => navigate("/app", true)} />;
       }
       case '/app':
         return (
@@ -952,6 +952,8 @@ export default function App() {
                 </Button>
               </div>
             </div>
+          ) : isAuthenticated && !bootError && parseRoute(currentPath).pathname === '/app/sarah' ? (
+            <div className="min-h-screen w-full bg-gray-50 dark:bg-gray-950">{renderContent()}</div>
           ) : isAuthenticated && !bootError && currentPath !== '/playground' ? (
             <AuthenticatedLayout
               currentPath={currentPath}
