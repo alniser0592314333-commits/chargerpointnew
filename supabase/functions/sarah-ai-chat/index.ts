@@ -1323,6 +1323,7 @@ Deno.serve(async (req) => {
     update_jawwal_pay_recipient: ["get_jawwal_pay_recipient"],
     update_sarah_ai_provider_settings: ["get_sarah_ai_provider_settings"],
     clear_sarah_ai_provider_settings: ["get_sarah_ai_provider_settings"],
+    send_sms: [],
     request_manual_sync: [],
   };
   const binProtectedCapabilityNames = new Set<string>([
