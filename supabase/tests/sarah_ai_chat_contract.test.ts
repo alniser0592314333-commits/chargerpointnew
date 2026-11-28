@@ -720,7 +720,9 @@ describe("Sarah chat gateway security contract", () => {
 
   it("disables caching and never returns raw provider errors", () => {
     expect(source).toContain('"Cache-Control": "no-store"');
-    expect(source).toContain("GEMINI_PROVIDER_UNAVAILABLE");
+    expect(source).not.toContain("GEMINI_PROVIDER_UNAVAILABLE");
+    expect(source).toContain("AI_SERVICE_TEMPORARILY_UNAVAILABLE");
+    expect(source).toContain("AI_SERVICE_NOT_READY");
     expect(source).not.toContain("resp.text()");
     expect(source).not.toContain("saved.error.message");
     expect(source).not.toContain("response.error.message");

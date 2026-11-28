@@ -94,6 +94,7 @@ describe("Sarah daily conversation persistence", () => {
     expect(page).toContain("onTouchStart");
     expect(page).toContain("onTouchMove");
     expect(page).toContain("onTouchEnd");
+    expect(page).toContain('message.role === "user" ? moved >= 24 : moved <= -24');
     expect(page).toContain("messageTime(message.createdAt)");
   });
 
